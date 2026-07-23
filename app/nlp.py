@@ -85,7 +85,7 @@ def trouver_arret(fragment, arrets, seuil_texte=70, seuil_sens=45, contexte=None
         elif len(correspondances) > 1:
             return sorted(correspondances), 75, "texte-ambigu"
     else:
-        resultat = process.extractOne(fragment_norm, normalises, scorer=fuzz.WRatio)
+        resultat = process.extractOne(fragment_norm, normalises, scorer=fuzz.ratio)
         if resultat and resultat[1] >= seuil_texte:
             return resultat[2], round(resultat[1]), "texte"
 

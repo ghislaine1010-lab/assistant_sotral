@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Assistant SOTRAL</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: 30px auto; background: #f4f6f8; }
+  h1 { color: #1F4E79; text-align: center; }
+  #chat { background: white; border-radius: 10px; padding: 15px; height: 400px;
+          overflow-y: auto; border: 1px solid #ccc; margin-bottom: 10px; }
+  .msg { margin: 8px 0; padding: 8px 12px; border-radius: 10px; max-width: 80%; }
+  .usager { background: #2E74B5; color: white; margin-left: auto; text-align: right; }
+  .assistant { background: #E2EFDA; color: #333; }
+  #zone-saisie { display: flex; gap: 8px; }
+  #message { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ccc; }
+  #envoyer { padding: 10px 16px; background: #1F4E79; color: white; border: none;
+             border-radius: 8px; cursor: pointer; }
+  #envoyer:hover { background: #2E74B5; }
+</style>
+</head>
+<body>
+  <h1>🚌 Assistant SOTRAL</h1>
+  <div id="chat"></div>
+  <div id="zone-saisie">
+    <input type="text" id="message" placeholder="Écrivez votre message ici...">
+    <button id="envoyer">Envoyer</button>
+  </div>
+
+<script>
+const chat = document.getElementById("chat");
+const champMessage = document.getElementById("message");
+const boutonEnvoyer = document.getElementById("envoyer");
+
+let position = null;
+// Demande la géolocalisation dès l'ouverture de la page (SF5)
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    (p) => { position = { latitude: p.coords.latitude, longitude: p.coords.longitude }; },
+    () => { console.log("Géolocalisation refusée ou indisponible."); }
+  );
+}
+
+function ajouterMessage(texte, classe) {
+  const div = document.createElement("div");
+  div.className = "msg " + classe;
+  div.textContent = texte;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function envoyerMessage() {
+  const texte = champMessage.value.trim();
+  if (!texte) return;
+  ajouterMessage(texte, "usager");
+  champMessage.value = "";
+
+  const corps = { message: texte };
+  if (position) { corps.latitude = position.latitude; corps.longitude = position.longitude; }
+
+  ajouterMessage("...", "assistant");
+  try {
+    const reponse = await fetch("http://127.0.0.1:8000/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corps),
+    });
+    const data = await reponse.json();
+    chat.lastChild.textContent = data.reponse;
+  } catch (e) {
+    chat.lastChild.textContent = "Erreur de connexion à l'assistant.";
+  }
+}
+
+boutonEnvoyer.addEventListener("click", envoyerMessage);
+champMessage.addEventListener("keypress", (e) => { if (e.key === "Enter") envoyerMessage(); });
+</script>
+</body>
+</html>

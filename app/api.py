@@ -3,7 +3,7 @@
    Expose le pipeline complet (app.assistant.repondre) sous forme
    d'un service HTTP consultable par n'importe quelle interface."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -16,6 +16,8 @@ app = FastAPI(
     description="Assistant intelligent de recommandation d'itinéraires — réseau SOTRAL, Lomé",
     version="0.1.0",
 )
+from fastapi.staticfiles import StaticFiles
+app.mount("/ui", StaticFiles(directory="static", html=True), name="static")
 
 # Autorise les appels depuis une page web (nécessaire pour une future interface front-end)
 app.add_middleware(
@@ -48,6 +50,11 @@ class Reponse(BaseModel):
 @app.get("/")
 def racine():
     return {"statut": "en ligne", "service": "Assistant SOTRAL", "arrets_charges": len(_arrets_cache or [])}
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
 
 
 @app.post("/message", response_model=Reponse)
