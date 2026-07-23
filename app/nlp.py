@@ -89,10 +89,12 @@ def trouver_arret(fragment, arrets, seuil_texte=70, seuil_sens=45, contexte=None
         if resultat and resultat[1] >= seuil_texte:
             return resultat[2], round(resultat[1]), "texte"
 
-    texte_pour_le_sens = normaliser(contexte) if contexte else fragment_norm
-    nom, score_sens = _chercher_par_sens(texte_pour_le_sens, seuil_sens)
-    if nom:
-        return nom, score_sens, "sens"
+    # Fallback sémantique désactivé (voir _chercher_par_sens) : sur ce jeu
+    # de données, l'effet de "hubness" fait qu'un texte hors-sujet (voire
+    # du charabia) score souvent plus haut qu'une vraie requête légitime
+    # (ex. "aller à l'université" -> 28% contre 45% pour "xyzabc123").
+    # Un seuil ne suffit pas à corriger ça ; à retravailler (score relatif,
+    # autre modèle...) avant de le réactiver.
     return None, 0, "aucun"
 
 MARQUEURS = [
