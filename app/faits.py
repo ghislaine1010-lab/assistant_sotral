@@ -80,3 +80,68 @@ def arret_le_plus_proche(latitude, longitude):
     resultat = cur.fetchone()
     cur.close(); conn.close()
     return resultat
+
+def coordonnees_arrets(noms):
+    """Renvoie, pour une liste de noms d'arrêts, leurs coordonnées GPS
+       (utilisé pour afficher l'itinéraire sur la carte — SF7)."""
+    conn = connexion(); cur = conn.cursor()
+    resultats = []
+    for nom in noms:
+        cur.execute("SELECT latitude, longitude FROM arrets WHERE nom = %s LIMIT 1;", (nom,))
+        row = cur.fetchone()
+        resultats.append({"nom": nom, "latitude": row[0] if row else None,
+                           "longitude": row[1] if row else None})
+    cur.close(); conn.close()
+    return resultats
+
+def arret_est_isole(nom):
+    """Vérifie si un arrêt existe dans la base mais n'est rattaché à
+    AUCUNE ligne (limite de connectivité réelle, distincte d'un arrêt
+    simplement non reconnu)."""
+    conn = connexion(); cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*) FROM arrets_lignes al
+        JOIN arrets a ON a.id = al.arret_id
+        WHERE a.nom = %s;
+    """, (nom,))
+    n = cur.fetchone()[0]
+    cur.close(); conn.close()
+    return n == 0
+
+def tableau_de_bord():
+    """Rassemble les statistiques du réseau (en direct depuis la base)
+       et le résumé du dernier audit de qualité des données (fixe,
+       daté de la session du 30/07 -- à mettre à jour si un nouvel
+       audit est mené) pour l'affichage du tableau de bord."""
+    conn = connexion(); cur = conn.cursor()
+    cur.execute("""
+        SELECT (SELECT COUNT(*) FROM lignes),
+               (SELECT COUNT(*) FROM arrets),
+               (SELECT COUNT(*) FROM horaires),
+               (SELECT COUNT(*) FROM correspondances),
+               (SELECT COUNT(DISTINCT ref) FROM lignes);
+    """)
+    nb_lignes, nb_arrets, nb_horaires, nb_correspondances, nb_refs = cur.fetchone()
+    cur.close(); conn.close()
+
+    return {
+        "reseau": {
+            "lignes": nb_lignes, "references_lignes": nb_refs,
+            "arrets": nb_arrets, "horaires": nb_horaires,
+            "correspondances": nb_correspondances,
+        },
+        "audit_qualite": {
+            "date": "30/07/2026",
+            "dimensions": [
+                {"nom": "Géométrie des lignes (aller/retour)", "ampleur": "71 % (12/17 lignes)", "statut": "corrige"},
+                {"nom": "Connectivité des arrêts", "ampleur": "23,5 % apparent -> 1,3 % réel", "statut": "corrige"},
+                {"nom": "Vocabulaire sens / terminus", "ampleur": "32 % (6/19 lignes)", "statut": "documente"},
+                {"nom": "Complétude des horaires", "ampleur": "7,9 % (3/38 combinaisons)", "statut": "documente"},
+                {"nom": "Cohérence codes bus / périodes", "ampleur": "0 % d'anomalie (127 groupes)", "statut": "sain"},
+                {"nom": "Durées de trajet", "ampleur": "5,5 % ambigu (retour dépôt)", "statut": "documente"},
+                {"nom": "Coordonnées géographiques", "ampleur": "0 % aberrante (455 arrêts)", "statut": "sain"},
+                {"nom": "Correspondances absurdes", "ampleur": "0 % (514 paires)", "statut": "sain"},
+            ],
+        },
+        "tests": {"total": 13, "reussis": 13},
+    }

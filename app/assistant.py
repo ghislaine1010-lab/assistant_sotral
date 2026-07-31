@@ -1,22 +1,36 @@
 # -*- coding: utf-8 -*-
-"""Pipeline complet (architecture RAG) :
-   - questions déterministes (lignes, correspondances, stats, jours) :
-     détectées AVANT le LLM, réponse directe depuis la base ;
-   - salutation / autre conversation : gérées par le LLM ;
-   - itinéraire : LLM propose, la base VÉRIFIE les lieux, utilise la
-     géolocalisation (SF5) si aucun départ n'est mentionné, et fournit
-     les horaires réels si un moment est précisé (SF4)."""
+"""Pipeline complet (architecture RAG), avec deux garde-fous contre les
+   erreurs d'extraction du LLM (variabilité documentée) :
+   1) intention mal classée (salutation/autre) malgré un marqueur clair
+      d'itinéraire -> on bascule entièrement sur nos règles (app.nlp.analyser) ;
+   2) intention correcte mais extraction PARTIELLE (un des deux lieux
+      manque, ex. "me rendre à" perturbant le LLM) -> on comble le trou
+      manquant avec nos règles, sans toucher au lieu que le LLM a bien trouvé."""
 
-from app.nlp import charger_arrets, trouver_arret
+from app.nlp import charger_arrets, trouver_arret, normaliser, analyser
 from app.recommandation import trouver_itineraire
 from app.llm import interpreter_message
 from app.faits import (jours_de_service_connus, lignes_desservant,
                         correspondances_a, statistiques_reseau, prochains_departs,
-                        arret_le_plus_proche)
+                        arret_le_plus_proche, coordonnees_arrets)
 from app.temps import jour_actuel, extraire_moment
 
+_memoire = {
+    "depart": None, "destination": None, "arrets": [], "clarification": None,
+    "dernier_depart_resolu": None, "dernier_destination_resolue": None,
+}
+
+MOTS_VIDES_COURTS = {"de", "du", "la", "le", "un", "une", "et", "au", "ce", "se",
+                      "ne", "je", "tu", "il", "on", "ma", "ta", "sa", "en", "a"}
+
+MARQUEURS_ITINERAIRE = ["je suis a", "je suis ", "je pars de", "je pars du", "en partant de",
+                         "aller a", "me rendre a", "je veux aller", "depuis", "jusqu a"]
+
+def _contient_marqueur_itineraire(phrase_normalisee):
+    return any(m in phrase_normalisee for m in MARQUEURS_ITINERAIRE)
+
+
 def _trouver_arret_mentionne(phrase, arrets):
-    from app.nlp import normaliser
     p_norm = normaliser(phrase)
     mots_phrase = set(p_norm.split())
     meilleur, meilleur_score = None, 0
@@ -28,15 +42,157 @@ def _trouver_arret_mentionne(phrase, arrets):
             meilleur = arret
     return meilleur
 
+
+def _choisir_parmi_options(phrase, options):
+    p_norm = normaliser(phrase)
+    mots_phrase = set(p_norm.split())
+    meilleur, meilleur_score = None, 0
+    for option in options:
+        mots_option = set(normaliser(option).replace("arret ", "").split())
+        communs = {m for m in (mots_option & mots_phrase)
+                   if len(m) >= 2 and m not in MOTS_VIDES_COURTS}
+        if communs and len(communs) > meilleur_score:
+            meilleur_score = len(communs)
+            meilleur = option
+    return meilleur
+
+
+def _verifier(lieu_brut, nom_champ, arrets):
+    if not lieu_brut:
+        return None, f"votre {nom_champ}", None
+    if lieu_brut in arrets:
+        return lieu_brut, None, None
+    nom, score, methode = trouver_arret(lieu_brut, arrets)
+    if methode == "texte-ambigu":
+        return None, ", ".join(f"« {o} »" for o in nom), nom
+    if nom:
+        return nom, None, None
+    return None, f"votre {nom_champ} (« {lieu_brut} » non reconnu)", None
+
+
+def _traiter_resultat_deja_resolu(resultat, phrase):
+    global _memoire
+    depart, methode_d = resultat["depart"], resultat["methode_depart"]
+    destination, methode_a = resultat["destination"], resultat["methode_destination"]
+
+    if methode_d == "texte-ambigu":
+        options = ", ".join(f"« {o} »" for o in depart)
+        _memoire["clarification"] = {"champ": "depart", "options": depart,
+                                      "raw_depart": None, "raw_destination": destination}
+        return f"Plusieurs arrêts correspondent à votre départ : {options}. Lequel voulez-vous dire ?"
+    if methode_a == "texte-ambigu":
+        options = ", ".join(f"« {o} »" for o in destination)
+        _memoire["clarification"] = {"champ": "destination", "options": destination,
+                                      "raw_depart": depart, "raw_destination": None}
+        return f"Plusieurs arrêts correspondent à votre destination : {options}. Lequel voulez-vous dire ?"
+
+    if not depart and _memoire["dernier_depart_resolu"]:
+        depart = _memoire["dernier_depart_resolu"]
+    if not destination and _memoire["dernier_destination_resolue"]:
+        destination = _memoire["dernier_destination_resolue"]
+
+    manquants = []
+    if not depart: manquants.append("votre point de départ")
+    if not destination: manquants.append("votre destination")
+    if manquants:
+        return (f"Je n'ai pas réussi à identifier {' et '.join(manquants)}. "
+                f"Pourriez-vous préciser un arrêt ou un lieu connu du réseau SOTRAL ?")
+
+    _memoire["dernier_depart_resolu"] = depart
+    _memoire["dernier_destination_resolue"] = destination
+    return _construire_reponse_itineraire(depart, destination, phrase)
+
+
+def _resoudre_les_deux(depart_brut, destination_brut, arrets, phrase, position=None):
+    global _memoire
+
+    if not depart_brut and _memoire["dernier_depart_resolu"]:
+        depart_brut = _memoire["dernier_depart_resolu"]
+    if not destination_brut and _memoire["dernier_destination_resolue"]:
+        destination_brut = _memoire["dernier_destination_resolue"]
+
+    if not depart_brut and position:
+        lat, lon = position
+        proche = arret_le_plus_proche(lat, lon)
+        if proche:
+            depart_brut = proche[0]
+
+    depart, probleme_d, options_d = _verifier(depart_brut, "point de départ", arrets)
+    destination, probleme_a, options_a = _verifier(destination_brut, "destination", arrets)
+
+    if options_d:
+        _memoire["clarification"] = {"champ": "depart", "options": options_d,
+                                      "raw_depart": depart_brut, "raw_destination": destination_brut}
+        return f"Plusieurs arrêts correspondent à votre départ : {probleme_d}. Lequel voulez-vous dire ?"
+    if options_a:
+        _memoire["clarification"] = {"champ": "destination", "options": options_a,
+                                      "raw_depart": depart_brut, "raw_destination": destination_brut}
+        return f"Plusieurs arrêts correspondent à votre destination : {probleme_a}. Lequel voulez-vous dire ?"
+
+    manquants = [x for x in (probleme_d, probleme_a) if x]
+    if manquants:
+        return (f"Je n'ai pas réussi à identifier {' et '.join(manquants)}. "
+                f"Pourriez-vous préciser un arrêt ou un lieu connu du réseau SOTRAL ?")
+
+    _memoire["dernier_depart_resolu"] = depart
+    _memoire["dernier_destination_resolue"] = destination
+    return _construire_reponse_itineraire(depart, destination, phrase)
+
+
+def _construire_reponse_itineraire(depart, destination, phrase):
+    global _memoire
+    itineraire = trouver_itineraire(depart, destination)
+    if itineraire["type"] == "aucun":
+        return itineraire["texte"]
+
+    _memoire["depart"], _memoire["destination"] = depart, destination
+    _memoire["arrets"] = itineraire.get("arrets", [])
+    _memoire["clarification"] = None
+
+    type_moment, valeur = extraire_moment(phrase)
+    jour = jour_actuel()
+
+    if jour is None:
+        note_horaire = "Nous ne disposons pas de données horaires pour la circulation du dimanche."
+    elif type_moment is None:
+        note_horaire = ("Précisez une heure ou un moment (ex. « vers 14h », « ce matin », « maintenant ») "
+                         "pour que je vous indique le prochain départ exact.")
+    else:
+        ref_principale = itineraire["lignes"][0]
+        deps = prochains_departs(ref_principale, jour, type_moment, valeur)
+        if deps:
+            liste = "; ".join(f"{h.strftime('%Hh%M') if hasattr(h,'strftime') else h} ({per.lower()})"
+                               for sens, per, h in deps)
+            note_horaire = (f"Sur la ligne {ref_principale} ({jour}), prochain(s) départ(s) connus : {liste}. "
+                             f"(Le sens exact de circulation associé à chaque horaire n'est pas garanti "
+                             f"par les données sources.)")
+        else:
+            note_horaire = f"Aucun horaire connu pour la ligne {ref_principale} à ce moment ({jour})."
+
+    return itineraire["texte"] + "\n" + note_horaire
+
+
+def dernier_itineraire_carte():
+    return coordonnees_arrets(_memoire.get("arrets") or [])
+
+
 def repondre(phrase, arrets=None, position=None):
-    """position : tuple (latitude, longitude) si l'usager a autorisé
-       sa géolocalisation ; sert de point de départ par défaut (SF5)
-       si aucun départ n'est mentionné dans la phrase."""
+    global _memoire
     if arrets is None:
         arrets = charger_arrets()
     p = phrase.lower()
+    p_norm = normaliser(phrase)
 
-    # ========== Questions déterministes, traitées AVANT le LLM ==========
+    if _memoire["clarification"]:
+        clar = _memoire["clarification"]
+        choix = _choisir_parmi_options(phrase, clar["options"])
+        if choix:
+            depart_brut = choix if clar["champ"] == "depart" else clar["raw_depart"]
+            destination_brut = choix if clar["champ"] == "destination" else clar["raw_destination"]
+            _memoire["clarification"] = None
+            return _resoudre_les_deux(depart_brut, destination_brut, arrets, phrase, position)
+        _memoire["clarification"] = None
+
     if any(m in p for m in ["dimanche", "quel jour", "quels jours", "circul", "roule", "service"]):
         jours = jours_de_service_connus()
         return (f"D'après nos données, les bus SOTRAL circulent : {', '.join(jours)}. "
@@ -64,9 +220,41 @@ def repondre(phrase, arrets=None, position=None):
                 return f"À l'arrêt « {arret} », vous pouvez changer entre les lignes : {', '.join(lignes)}."
         return "Pouvez-vous préciser à quel arrêt vous souhaitez connaître les correspondances ?"
 
-    # ========== Sinon, on passe par le LLM (salutation / itinéraire / autre) ==========
     comprehension = interpreter_message(phrase)
     intention = comprehension.get("intention")
+    depart_brut = comprehension.get("depart")
+    destination_brut = comprehension.get("destination")
+
+    # ---------- Garde-fou 1 : intention mal classée malgré un marqueur clair ----------
+    if intention in ("salutation", "autre") and _contient_marqueur_itineraire(p_norm):
+        resultat_regles = analyser(phrase, arrets)
+        if resultat_regles["depart"] or resultat_regles["destination"]:
+            return _traiter_resultat_deja_resolu(resultat_regles, phrase)
+
+    # ---------- Garde-fou 2 : intention correcte mais extraction PARTIELLE ----------
+    if intention == "itineraire" and (not depart_brut or not destination_brut) and _contient_marqueur_itineraire(p_norm):
+        resultat_regles = analyser(phrase, arrets)
+        if not depart_brut and resultat_regles["methode_depart"] == "texte-ambigu":
+            options = resultat_regles["depart"]
+            _memoire["clarification"] = {"champ": "depart", "options": options,
+                                          "raw_depart": None, "raw_destination": destination_brut}
+            return (f"Plusieurs arrêts correspondent à votre départ : "
+                     f"{', '.join(f'« {o} »' for o in options)}. Lequel voulez-vous dire ?")
+        if not depart_brut and resultat_regles["depart"]:
+            depart_brut = resultat_regles["depart"]
+
+        if not destination_brut and resultat_regles["methode_destination"] == "texte-ambigu":
+            options = resultat_regles["destination"]
+            _memoire["clarification"] = {"champ": "destination", "options": options,
+                                          "raw_depart": depart_brut, "raw_destination": None}
+            return (f"Plusieurs arrêts correspondent à votre destination : "
+                     f"{', '.join(f'« {o} »' for o in options)}. Lequel voulez-vous dire ?")
+        if not destination_brut and resultat_regles["destination"]:
+            destination_brut = resultat_regles["destination"]
+
+    type_moment, _ = extraire_moment(phrase)
+    if not depart_brut and not destination_brut and type_moment and _memoire["depart"] and _memoire["destination"]:
+        return _construire_reponse_itineraire(_memoire["depart"], _memoire["destination"], phrase)
 
     if intention == "salutation":
         return comprehension.get("reponse") or "Comment puis-je vous aider ?"
@@ -76,81 +264,8 @@ def repondre(phrase, arrets=None, position=None):
                 "du réseau SOTRAL dont nous disposons pour ce prototype. Je peux vous renseigner "
                 "sur les lignes, les arrêts, les horaires et les correspondances du réseau.")
 
-    # ========== Itinéraire : vérification des lieux proposés par le LLM ==========
-    depart_brut = comprehension.get("depart")
-    destination_brut = comprehension.get("destination")
+    if not depart_brut and not destination_brut and _memoire["depart"] and _memoire["destination"]:
+        return ("Je n'ai pas identifié de nouvelle demande. Voulez-vous continuer sur le trajet "
+                f"« {_memoire['depart']} → {_memoire['destination']} », ou en préciser un autre ?")
 
-    # ---------- SF5 : géolocalisation, utilisée seulement si aucun départ n'est mentionné ----------
-    if not depart_brut and position:
-        lat, lon = position
-        proche = arret_le_plus_proche(lat, lon)
-        if proche:
-            depart_brut = proche[0]  # le nom de l'arrêt trouvé devient le départ
-
-    def verifier(lieu_brut, nom_champ):
-        if not lieu_brut:
-            return None, f"votre {nom_champ}"
-        nom, score, methode = trouver_arret(lieu_brut, arrets)
-        if methode == "texte-ambigu":
-            return "AMBIGU", ", ".join(f"« {o} »" for o in nom)
-        if nom:
-            return nom, None
-        return None, f"votre {nom_champ} (« {lieu_brut} » non reconnu)"
-
-    depart, probleme_d = verifier(depart_brut, "point de départ")
-    destination, probleme_a = verifier(destination_brut, "destination")
-
-    if depart == "AMBIGU":
-        return f"Plusieurs arrêts correspondent à votre départ : {probleme_d}. Lequel voulez-vous dire ?"
-    if destination == "AMBIGU":
-        return f"Plusieurs arrêts correspondent à votre destination : {probleme_a}. Lequel voulez-vous dire ?"
-    manquants = [x for x in (probleme_d, probleme_a) if x]
-    if manquants:
-        return (f"Je n'ai pas réussi à identifier {' et '.join(manquants)}. "
-                f"Pourriez-vous préciser un arrêt ou un lieu connu du réseau SOTRAL ?")
-
-    itineraire = trouver_itineraire(depart, destination)
-    if itineraire["type"] == "aucun":
-        return itineraire["texte"]
-
-    # ---------- Horaires réels, uniquement si un moment est précisé (SF4) ----------
-    type_moment, valeur = extraire_moment(phrase)
-    jour = jour_actuel()
-
-    if jour is None:
-        note_horaire = "Nous ne disposons pas de données horaires pour la circulation du dimanche."
-    elif type_moment is None:
-        note_horaire = ("Précisez une heure ou un moment (ex. « vers 14h », « ce matin », « maintenant ») "
-                         "pour que je vous indique le prochain départ exact.")
-    else:
-        ref_principale = itineraire["lignes"][0]
-        deps = prochains_departs(ref_principale, jour, type_moment, valeur)
-        if deps:
-            liste = "; ".join(f"{h.strftime('%Hh%M') if hasattr(h,'strftime') else h} ({per.lower()})"
-                               for sens, per, h in deps)
-            note_horaire = (f"Sur la ligne {ref_principale} ({jour}), prochain(s) départ(s) connus : {liste}. "
-                             f"(Le sens exact de circulation associé à chaque horaire n'est pas garanti "
-                             f"par les données sources.)")
-        else:
-            note_horaire = f"Aucun horaire connu pour la ligne {ref_principale} à ce moment ({jour})."
-
-    return itineraire["texte"] + "\n" + note_horaire
-
-
-if __name__ == "__main__":
-    arrets = charger_arrets()
-    phrases_test = [
-        "Bonjour, comment vas-tu ?",
-        "Je suis à Adidogomé et je veux aller à BIA",
-        "je veux partir de Adidogomé vers BIA à 7h",
-        "quelles lignes desservent BIA ?",
-        "quelles correspondances à BIA ?",
-        "combien de lignes avez-vous au total ?",
-        "quel est le prix du ticket ?",
-    ]
-    for phrase in phrases_test:
-        print(f"\nUsager : {phrase}")
-        print("Assistant :", repondre(phrase, arrets))
-
-    print("\nUsager (géolocalisé, sans préciser de départ) : « Je veux aller à BIA »")
-    print("Assistant :", repondre("Je veux aller à BIA", arrets, position=(6.1319, 1.2228)))
+    return _resoudre_les_deux(depart_brut, destination_brut, arrets, phrase, position)

@@ -1,0 +1,22 @@
+categorie,phrase,reussite_ou_temps
+comprehension,Je suis à Adidogomé et je veux aller à BIA,False
+comprehension,je pars de zangera pour le CHU,False
+comprehension,comment aller a todman depuis atikoume ?,True
+comprehension,Je souhaite me rendre à la douane adidogome,True
+comprehension,je suis a avedji et je veux aller a adidogome,False
+comprehension,je pars de Bè pour BIA,True
+comprehension,depuis Zanguéra jusqu'à BIA,False
+comprehension,je veux aller à Adjololo en partant de Djagble,False
+itineraire,Je suis à Adidogomé et je veux aller à BIA,False (14.99s)
+itineraire,je suis a avedji et je veux aller a adidogome,False (12.58s)
+itineraire,depuis Zanguéra jusqu'à BIA,False (10.01s)
+itineraire,je veux aller à Adjololo en partant de Djagble,False (11.77s)
+itineraire,comment aller a todman depuis atikoume ?,True (9.46s)
+itineraire,je suis a adidogome je veux aller a zangera,False (11.24s)
+divers,Bonjour,12.98s
+divers,"merci, au revoir",14.19s
+divers,quelles lignes desservent BIA ?,0.04s
+divers,quelles correspondances à BIA ?,0.04s
+divers,combien de lignes avez-vous au total ?,0.04s
+divers,quel est le prix du ticket ?,15.57s
+divers,est-ce que les bus roulent le dimanche ?,0.03s

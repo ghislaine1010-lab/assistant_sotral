@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau de bord — Assistant SOTRAL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12283F; --route:#1F4E79; --transit:#2E74B5; --signal:#ED7D31;
+    --ok:#2F7D5E; --paper:#F6F4EF; --surface:#FFFFFF; --line:#E3DFD6;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; color:var(--ink); font-family:'Inter',sans-serif;
+    background:var(--paper);
+  }
+  .entete{
+    background:linear-gradient(120deg, var(--route), var(--transit));
+    color:#fff; padding:22px 32px; display:flex; align-items:center;
+    justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+  .entete h1{ font-family:'Space Grotesk',sans-serif; font-size:24px; margin:0; }
+  .entete p{ margin:2px 0 0; font-size:13px; color:#D7E6F2; }
+  .entete a{ color:#fff; background:rgba(255,255,255,.16); padding:8px 16px;
+             border-radius:20px; text-decoration:none; font-size:13px; }
+  .entete a:hover{ background:rgba(255,255,255,.28); }
+
+  .corps{ max-width:1040px; margin:0 auto; padding:26px 20px 50px; }
+
+  .cartes{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:14px; margin-bottom:28px; }
+  .carte{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:18px; text-align:center;
+  }
+  .carte .valeur{ font-family:'IBM Plex Mono',monospace; font-size:30px; font-weight:600; color:var(--route); }
+  .carte .label{ font-size:12.5px; color:#5B6672; margin-top:4px; }
+
+  h2{ font-family:'Space Grotesk',sans-serif; font-size:17px; color:var(--route); margin:30px 0 12px; }
+
+  table{ width:100%; border-collapse:collapse; background:var(--surface); border-radius:12px; overflow:hidden; }
+  th, td{ padding:11px 14px; text-align:left; font-size:13.5px; border-bottom:1px solid var(--line); }
+  th{ background:#EFF3F7; color:var(--route); font-weight:600; }
+  .badge{ display:inline-block; padding:3px 10px; border-radius:12px; font-size:11.5px; font-weight:600; color:#fff; }
+  .badge-corrige{ background:var(--ok); }
+  .badge-documente{ background:var(--signal); }
+  .badge-sain{ background:var(--transit); }
+
+  #chargement{ text-align:center; padding:40px; color:#888; }
+</style>
+</head>
+<body>
+  <div class="entete">
+    <div>
+      <h1>📊 Tableau de bord — Assistant SOTRAL</h1>
+      <p>Statistiques du réseau et bilan de l'audit de qualité des données</p>
+    </div>
+    <a href="/ui/">← Retour au chat</a>
+  </div>
+
+  <div class="corps">
+    <div id="chargement">Chargement des statistiques...</div>
+    <div id="contenu" style="display:none;">
+      <div class="cartes" id="cartes-reseau"></div>
+      <h2>Bilan de l'audit de qualité des données (dernier audit)</h2>
+      <table>
+        <thead><tr><th>Dimension vérifiée</th><th>Ampleur constatée</th><th>Statut</th></tr></thead>
+        <tbody id="lignes-audit"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+async function charger() {
+  try {
+    const reponse = await fetch("http://127.0.0.1:8000/dashboard");
+    const data = await reponse.json();
+
+    const cartes = [
+      { valeur: data.reseau.lignes, label: "Tracés de lignes" },
+      { valeur: data.reseau.references_lignes, label: "Lignes (références)" },
+      { valeur: data.reseau.arrets, label: "Arrêts géolocalisés" },
+      { valeur: data.reseau.horaires, label: "Horaires enregistrés" },
+      { valeur: data.reseau.correspondances, label: "Correspondances" },
+      { valeur: `${data.tests.reussis}/${data.tests.total}`, label: "Tests de non-régression" },
+    ];
+    document.getElementById("cartes-reseau").innerHTML = cartes.map(c =>
+      `<div class="carte"><div class="valeur">${c.valeur}</div><div class="label">${c.label}</div></div>`
+    ).join("");
+
+    const badges = { corrige: "Corrigé", documente: "Documenté", sain: "Sain" };
+    document.getElementById("lignes-audit").innerHTML = data.audit_qualite.dimensions.map(d =>
+      `<tr><td>${d.nom}</td><td>${d.ampleur}</td>
+       <td><span class="badge badge-${d.statut}">${badges[d.statut]}</span></td></tr>`
+    ).join("");
+
+    document.getElementById("chargement").style.display = "none";
+    document.getElementById("contenu").style.display = "block";
+  } catch (e) {
+    document.getElementById("chargement").textContent = "Impossible de charger les statistiques (le serveur est-il lancé ?).";
+  }
+}
+charger();
+</script>
+</body>
+</html>

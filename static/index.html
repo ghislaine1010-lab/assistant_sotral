@@ -2,77 +2,406 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Assistant SOTRAL</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant SOTRAL — Itinéraires en langage naturel</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚌</text></svg>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
-  body { font-family: Arial, sans-serif; max-width: 600px; margin: 30px auto; background: #f4f6f8; }
-  h1 { color: #1F4E79; text-align: center; }
-  #chat { background: white; border-radius: 10px; padding: 15px; height: 400px;
-          overflow-y: auto; border: 1px solid #ccc; margin-bottom: 10px; }
-  .msg { margin: 8px 0; padding: 8px 12px; border-radius: 10px; max-width: 80%; }
-  .usager { background: #2E74B5; color: white; margin-left: auto; text-align: right; }
-  .assistant { background: #E2EFDA; color: #333; }
-  #zone-saisie { display: flex; gap: 8px; }
-  #message { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ccc; }
-  #envoyer { padding: 10px 16px; background: #1F4E79; color: white; border: none;
-             border-radius: 8px; cursor: pointer; }
-  #envoyer:hover { background: #2E74B5; }
+  :root{
+    --ink:#12283F; --route:#1F4E79; --transit:#2E74B5; --signal:#ED7D31;
+    --ok:#2F7D5E; --danger:#C0392B; --paper:#F3F1EA; --surface:#FFFFFF;
+    --surface-2:#FBFAF7; --line:#E5E1D6; --muted:#6B7684;
+    --radius-lg:22px; --radius-md:16px; --radius-sm:12px;
+    --ombre-panneau:0 24px 50px -28px rgba(18,40,63,.38), 0 2px 8px -2px rgba(18,40,63,.06);
+    --ombre-flottante:0 10px 22px -10px rgba(18,40,63,.28);
+  }
+  *{box-sizing:border-box;}
+  html,body{ height:100%; margin:0; }
+  body{
+    min-height:100vh; color:var(--ink); font-family:'Inter',sans-serif;
+    background:
+      radial-gradient(circle at 8% 10%, rgba(46,116,181,.12), transparent 42%),
+      radial-gradient(circle at 94% 88%, rgba(237,125,49,.11), transparent 44%),
+      repeating-linear-gradient(115deg, rgba(31,78,121,.045) 0 2px, transparent 2px 46px),
+      var(--paper);
+    display:flex; flex-direction:column;
+  }
+  ::selection{ background:rgba(46,116,181,.25); }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:#CBD3DC; border-radius:8px; }
+  ::-webkit-scrollbar-thumb:hover{ background:#AFB9C6; }
+
+  /* ---------- En-tête ---------- */
+  .entete{
+    position:relative; background:linear-gradient(125deg, var(--route) 0%, var(--transit) 65%, #3A85C9 100%);
+    color:#fff; padding:20px 32px; display:flex; align-items:center;
+    justify-content:space-between; flex-wrap:wrap; gap:12px;
+    box-shadow:0 6px 28px -10px rgba(18,40,63,.5); overflow:hidden;
+  }
+  .entete::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(circle at 85% -40%, rgba(255,255,255,.22), transparent 55%);
+  }
+  .entete .titre{ display:flex; align-items:center; gap:14px; position:relative; z-index:1; }
+  .entete .logo{
+    width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,.16); backdrop-filter:blur(6px); font-size:24px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);
+  }
+  .entete h1{ font-family:'Space Grotesk',sans-serif; font-size:23px; font-weight:700; margin:0; letter-spacing:.2px; }
+  .entete p{ margin:3px 0 0; font-size:13px; color:#DCEAF5; max-width:46ch; }
+  .statut-live{
+    position:relative; z-index:1; display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px; background:rgba(255,255,255,.15); padding:9px 15px; border-radius:24px;
+    letter-spacing:.6px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);
+  }
+  .point-live{
+    width:8px; height:8px; border-radius:50%; background:#6EE7A8; flex-shrink:0;
+    box-shadow:0 0 0 rgba(110,231,168,.6); animation:respire 1.8s infinite;
+  }
+  @keyframes respire{
+    0%{ box-shadow:0 0 0 0 rgba(110,231,168,.6); }
+    70%{ box-shadow:0 0 0 8px rgba(110,231,168,0); }
+    100%{ box-shadow:0 0 0 0 rgba(110,231,168,0); }
+  }
+
+  /* ---------- Corps ---------- */
+  .corps{
+    flex:1; display:grid; grid-template-columns:1.05fr 1fr; gap:22px;
+    padding:24px 28px 28px; min-height:0;
+  }
+  @media (max-width:900px){ .corps{ grid-template-columns:1fr; } }
+
+  .panneau{
+    background:var(--surface); border-radius:var(--radius-lg); border:1px solid var(--line);
+    box-shadow:var(--ombre-panneau);
+    display:flex; flex-direction:column; min-height:0; overflow:hidden;
+  }
+
+  .panneau-chat{ padding:20px 20px 18px; }
+
+  #chat{
+    flex:1; overflow-y:auto; padding:6px 4px 12px; display:flex; flex-direction:column; gap:14px;
+    min-height:0;
+  }
+
+  .accueil{
+    display:flex; flex-direction:column; align-items:flex-start; gap:10px;
+    padding:18px 4px 6px; color:var(--muted); animation:apparait .3s ease-out;
+  }
+  .accueil .badge-accueil{
+    display:flex; align-items:center; gap:10px; font-family:'Space Grotesk',sans-serif;
+    font-size:16px; font-weight:600; color:var(--ink);
+  }
+  .accueil .avatar-accueil{
+    width:36px; height:36px; border-radius:12px; background:linear-gradient(135deg,var(--route),var(--transit));
+    display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:var(--ombre-flottante);
+  }
+  .accueil p{ margin:0; font-size:13.5px; line-height:1.6; max-width:46ch; }
+
+  .rangee-msg{ display:flex; gap:9px; align-items:flex-end; animation:apparait .25s ease-out; }
+  .rangee-msg.usager{ flex-direction:row-reverse; align-self:flex-end; }
+  .rangee-msg.assistant{ align-self:flex-start; }
+  @keyframes apparait{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  .avatar{
+    width:30px; height:30px; border-radius:10px; flex-shrink:0; display:flex; align-items:center;
+    justify-content:center; font-size:15px;
+  }
+  .rangee-msg.assistant .avatar{ background:linear-gradient(135deg,var(--route),var(--transit)); color:#fff; }
+  .rangee-msg.usager .avatar{ background:#E7EBF0; color:var(--route); }
+
+  .msg{
+    max-width:76%; padding:11px 16px; border-radius:18px; font-size:14.5px; line-height:1.6;
+  }
+  .usager .msg{ background:linear-gradient(135deg, var(--route), var(--transit)); color:#fff; border-bottom-right-radius:5px; box-shadow:0 6px 16px -8px rgba(31,78,121,.55); }
+  .assistant .msg{
+    background:var(--surface-2); color:var(--ink); border:1px solid var(--line); border-bottom-left-radius:5px;
+    white-space:pre-line;
+  }
+  .assistant .msg .ligne-badge{
+    display:inline-block; font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:12.5px;
+    background:var(--transit); color:#fff; padding:1.5px 8px; border-radius:7px; margin:0 2px;
+    letter-spacing:.3px;
+  }
+  .assistant .msg .lieu{ font-weight:600; color:var(--route); }
+  .chargement{ display:inline-flex; gap:4px; align-items:center; padding:3px 0; }
+  .point-charge{ width:6px; height:6px; border-radius:50%; background:#9AA7B2; animation:pulse 1s infinite ease-in-out; }
+  .point-charge:nth-child(2){ animation-delay:.15s; }
+  .point-charge:nth-child(3){ animation-delay:.3s; }
+  @keyframes pulse{ 0%,80%,100%{opacity:.25;} 40%{opacity:1;} }
+
+  .zone-saisie{ display:flex; gap:10px; margin-top:14px; align-items:center; }
+  .champ-conteneur{
+    flex:1; display:flex; align-items:center; gap:8px; padding:4px 6px 4px 18px;
+    border-radius:26px; border:1.5px solid var(--line); background:var(--surface-2);
+    transition:border-color .15s, box-shadow .15s, background .15s;
+  }
+  .champ-conteneur:focus-within{
+    border-color:var(--transit); box-shadow:0 0 0 4px rgba(46,116,181,.13); background:#fff;
+  }
+  #message{
+    flex:1; padding:10px 0; border:none; background:transparent; outline:none;
+    font-family:'Inter',sans-serif; font-size:14.5px; color:var(--ink);
+  }
+  #message::placeholder{ color:#9AA7B2; }
+  #envoyer{
+    width:44px; height:44px; border-radius:50%; border:none; background:var(--signal); color:#fff;
+    font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    transition:background .15s, transform .1s, box-shadow .15s;
+    box-shadow:0 6px 16px -6px rgba(237,125,49,.6);
+  }
+  #envoyer:hover{ background:#D96B24; transform:translateY(-1px); }
+  #envoyer:active{ transform:scale(.94); }
+  #envoyer.mode-arret{ background:var(--danger); box-shadow:0 6px 16px -6px rgba(192,57,43,.55); }
+  #envoyer.mode-arret:hover{ background:#A93226; }
+
+  .suggestions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:13px; }
+  .suggestion{
+    display:inline-flex; align-items:center; gap:6px; font-size:12.5px; padding:8px 13px 8px 11px;
+    border-radius:16px; background:var(--surface-2); color:var(--route);
+    border:1px solid var(--line); cursor:pointer; font-family:'Inter',sans-serif; font-weight:500;
+    transition:background .15s, border-color .15s, transform .1s;
+  }
+  .suggestion:hover{ background:#EAF1F8; border-color:#CBDCEB; transform:translateY(-1px); }
+  .suggestion:active{ transform:translateY(0); }
+
+  .panneau-carte{ padding:18px 18px 16px; }
+  .panneau-carte .entete-carte{
+    display:flex; align-items:center; justify-content:space-between; margin:0 0 12px; flex-shrink:0; gap:10px;
+  }
+  .panneau-carte h2{
+    font-family:'Space Grotesk',sans-serif; font-size:15px; margin:0; color:var(--route);
+    display:flex; align-items:center; gap:8px; font-weight:600;
+  }
+  .panneau-carte h2::before{ content:"◈"; color:var(--signal); }
+  .pastille-carte{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); background:var(--surface-2);
+    border:1px solid var(--line); padding:5px 11px; border-radius:12px; letter-spacing:.3px;
+  }
+  #carte{ flex:1; min-height:0; border-radius:var(--radius-md); border:1px solid var(--line); }
+  .leaflet-popup-content-wrapper{ border-radius:12px; }
+  .legende{ display:flex; gap:16px; margin-top:12px; font-size:12px; color:var(--muted); flex-wrap:wrap; flex-shrink:0; }
+  .legende span{ display:inline-flex; align-items:center; gap:6px; }
+  .puce{ width:9px; height:9px; border-radius:50%; display:inline-block; box-shadow:0 0 0 3px rgba(0,0,0,.04); }
+
+  .pied{ text-align:center; font-size:11.5px; color:var(--muted); padding:2px 0 14px; letter-spacing:.2px; }
 </style>
 </head>
 <body>
-  <h1>🚌 Assistant SOTRAL</h1>
-  <div id="chat"></div>
-  <div id="zone-saisie">
-    <input type="text" id="message" placeholder="Écrivez votre message ici...">
-    <button id="envoyer">Envoyer</button>
+  <div class="entete">
+    <div class="titre">
+      <span class="logo">🚌</span>
+      <div>
+        <h1>Assistant SOTRAL</h1>
+        <p>Décrivez votre trajet en langage naturel — ligne, correspondance et horaire en un message.</p>
+      </div>
+    </div>
+    <div class="statut-live"><span class="point-live"></span>RÉSEAU SOTRAL — LOMÉ</div>
   </div>
 
+  <div class="corps">
+    <div class="panneau panneau-chat">
+      <div id="chat">
+        <div class="accueil" id="accueil">
+          <div class="badge-accueil"><span class="avatar-accueil">🚌</span>Bonjour ! Où souhaitez-vous aller ?</div>
+          <p>Dites-moi simplement votre point de départ et votre destination — par exemple « Je suis à Bè, je veux aller à Adidogomé » — et je vous indique la ligne, les correspondances et les horaires.</p>
+        </div>
+      </div>
+      <div class="zone-saisie">
+        <div class="champ-conteneur">
+          <input type="text" id="message" placeholder="Ex. : je suis à Bè, je veux aller à Adidogomé…" autocomplete="off">
+        </div>
+        <button id="envoyer" aria-label="Envoyer">➤</button>
+      </div>
+      <div class="suggestions">
+        <span class="suggestion" data-msg="Je suis à Bè et je veux aller à BIA">🚏 Bè → BIA</span>
+        <span class="suggestion" data-msg="Quelles lignes desservent BIA ?">🧭 Lignes à BIA</span>
+        <span class="suggestion" data-msg="Est-ce que les bus roulent le dimanche ?">🗓️ Jours de service</span>
+      </div>
+    </div>
+
+    <div class="panneau panneau-carte">
+      <div class="entete-carte">
+        <h2>Itinéraire sur la carte</h2>
+        <span class="pastille-carte" id="pastille-carte">en attente</span>
+      </div>
+      <div id="carte"></div>
+      <div class="legende">
+        <span><i class="puce" style="background:#2F7D5E"></i>Départ</span>
+        <span><i class="puce" style="background:#ED7D31"></i>Correspondance</span>
+        <span><i class="puce" style="background:#C0392B"></i>Arrivée</span>
+      </div>
+    </div>
+  </div>
+  <div class="pied">Assistant SOTRAL — projet non officiel, données à titre indicatif</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const chat = document.getElementById("chat");
+const accueil = document.getElementById("accueil");
 const champMessage = document.getElementById("message");
 const boutonEnvoyer = document.getElementById("envoyer");
+const pastilleCarte = document.getElementById("pastille-carte");
 
 let position = null;
-// Demande la géolocalisation dès l'ouverture de la page (SF5)
 if (navigator.geolocation) {
   navigator.geolocation.getCurrentPosition(
     (p) => { position = { latitude: p.coords.latitude, longitude: p.coords.longitude }; },
-    () => { console.log("Géolocalisation refusée ou indisponible."); }
+    () => {}
   );
 }
 
-function ajouterMessage(texte, classe) {
-  const div = document.createElement("div");
-  div.className = "msg " + classe;
-  div.textContent = texte;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
+const carte = L.map("carte", { zoomControl: true }).setView([6.1319, 1.2228], 12);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "© OpenStreetMap", maxZoom: 18,
+}).addTo(carte);
+let coucheTrajet = null;
+
+function icone(couleur) {
+  return L.divIcon({
+    className: "", html: `<div style="width:16px;height:16px;border-radius:50%;background:${couleur};border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
+    iconSize: [16, 16], iconAnchor: [8, 8],
+  });
 }
 
-async function envoyerMessage() {
-  const texte = champMessage.value.trim();
-  if (!texte) return;
-  ajouterMessage(texte, "usager");
+async function actualiserCarte() {
+  try {
+    const reponse = await fetch("http://127.0.0.1:8000/trajet");
+    const points = await reponse.json();
+    const valides = points.filter(p => p.latitude !== null && p.longitude !== null);
+    if (valides.length === 0) return;
+
+    if (coucheTrajet) carte.removeLayer(coucheTrajet);
+    const groupe = L.featureGroup();
+    const coords = valides.map(p => [p.latitude, p.longitude]);
+
+    valides.forEach((p, i) => {
+      const couleur = (i === 0) ? "#2F7D5E" : (i === valides.length - 1) ? "#C0392B" : "#ED7D31";
+      L.marker([p.latitude, p.longitude], { icon: icone(couleur) }).addTo(groupe)
+        .bindPopup(`<strong>${p.nom}</strong>`);
+    });
+    L.polyline(coords, { color: "#2E74B5", weight: 4, opacity: .85 }).addTo(groupe);
+
+    groupe.addTo(carte);
+    coucheTrajet = groupe;
+    carte.fitBounds(groupe.getBounds(), { padding: [28, 28] });
+    pastilleCarte.textContent = `${valides.length} arrêt${valides.length > 1 ? "s" : ""}`;
+  } catch (e) { console.log("Carte non actualisée :", e); }
+}
+
+function mettreEnForme(texte) {
+  let t = texte.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  t = t.replace(/\b(L\d{1,2})\b/g, '<span class="ligne-badge">$1</span>');
+  t = t.replace(/«\s*([^»]+)\s*»/g, '« <span class="lieu">$1</span> »');
+  return t;
+}
+
+function ajouterMessage(texte, classe, brut=false) {
+  if (accueil) { accueil.remove(); }
+  const rangee = document.createElement("div");
+  rangee.className = "rangee-msg " + classe;
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+  avatar.textContent = classe === "usager" ? "🙂" : "🚌";
+  const bulle = document.createElement("div");
+  bulle.className = "msg";
+  bulle.innerHTML = brut ? texte : mettreEnForme(texte);
+  rangee.appendChild(avatar);
+  rangee.appendChild(bulle);
+  chat.appendChild(rangee);
+  chat.scrollTop = chat.scrollHeight;
+  return bulle;
+}
+
+let controleurEnCours = null;
+let derniereRequeteInterrompue = null;   // texte de la phrase interrompue, ou null
+
+const MOTS_REPRISE = ["continu", "reprend", "vas-y", "recommence", "continue"];
+
+function estUneDemandeDeReprise(texte) {
+  const t = texte.toLowerCase().trim();
+  // Reprise = un message court qui contient un mot de relance,
+  // sans introduire lui-même un nouveau lieu (heuristique simple,
+  // suffisante pour ce cas d'usage précis).
+  return t.split(/\s+/).length <= 4 && MOTS_REPRISE.some(m => t.includes(m));
+}
+
+function passerEnModeArret() {
+  boutonEnvoyer.textContent = "■";
+  boutonEnvoyer.classList.add("mode-arret");
+  boutonEnvoyer.setAttribute("aria-label", "Arrêter la réponse");
+}
+function passerEnModeEnvoi() {
+  boutonEnvoyer.textContent = "➤";
+  boutonEnvoyer.classList.remove("mode-arret");
+  boutonEnvoyer.setAttribute("aria-label", "Envoyer");
+  controleurEnCours = null;
+}
+
+async function envoyerTexte(texteSaisi) {
+  if (controleurEnCours) return;
+  if (!texteSaisi) return;
+
+  // Si l'usager demande de reprendre, on renvoie la phrase interrompue
+  // (mais on affiche quand même son message tel quel dans le chat).
+  let texteAEnvoyer = texteSaisi;
+  if (derniereRequeteInterrompue && estUneDemandeDeReprise(texteSaisi)) {
+    texteAEnvoyer = derniereRequeteInterrompue;
+  }
+
+  ajouterMessage(texteSaisi, "usager");
   champMessage.value = "";
 
-  const corps = { message: texte };
+  const corps = { message: texteAEnvoyer };
   if (position) { corps.latitude = position.latitude; corps.longitude = position.longitude; }
 
-  ajouterMessage("...", "assistant");
+  const enCours = ajouterMessage(
+    '<span class="chargement"><span class="point-charge"></span><span class="point-charge"></span><span class="point-charge"></span></span>',
+    "assistant", true
+  );
+
+  controleurEnCours = new AbortController();
+  passerEnModeArret();
+
   try {
     const reponse = await fetch("http://127.0.0.1:8000/message", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(corps),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corps), signal: controleurEnCours.signal,
     });
     const data = await reponse.json();
-    chat.lastChild.textContent = data.reponse;
+    enCours.innerHTML = mettreEnForme(data.reponse);
+    chat.scrollTop = chat.scrollHeight;
+    derniereRequeteInterrompue = null;   // réponse obtenue avec succès : plus rien à reprendre
+    actualiserCarte();
   } catch (e) {
-    chat.lastChild.textContent = "Erreur de connexion à l'assistant.";
+    if (e.name === "AbortError") {
+      derniereRequeteInterrompue = texteAEnvoyer;  // on retient CE texte pour une reprise éventuelle
+      enCours.textContent = "— Réponse interrompue — (tapez « continue » pour reprendre)";
+      enCours.style.fontStyle = "italic";
+      enCours.style.opacity = "0.7";
+    } else {
+      enCours.textContent = "Impossible de joindre l'assistant. Vérifiez que le serveur est lancé.";
+    }
+  } finally {
+    passerEnModeEnvoi();
   }
 }
 
-boutonEnvoyer.addEventListener("click", envoyerMessage);
-champMessage.addEventListener("keypress", (e) => { if (e.key === "Enter") envoyerMessage(); });
+boutonEnvoyer.addEventListener("click", () => {
+  if (controleurEnCours) { controleurEnCours.abort(); }
+  else { envoyerTexte(champMessage.value.trim()); }
+});
+champMessage.addEventListener("keypress", (e) => {
+  if (e.key === "Enter" && !controleurEnCours) envoyerTexte(champMessage.value.trim());
+});
+document.querySelectorAll(".suggestion").forEach(el => {
+  el.addEventListener("click", () => envoyerTexte(el.dataset.msg));
+});
 </script>
 </body>
 </html>
