@@ -1,0 +1,46 @@
+phrase,attendu,predit,essai
+Bonjour,salutation,salutation,1
+Bonjour,salutation,salutation,2
+Bonjour,salutation,salutation,3
+"Salut, comment vas-tu ?",salutation,salutation,1
+"Salut, comment vas-tu ?",salutation,salutation,2
+"Salut, comment vas-tu ?",salutation,salutation,3
+"Merci beaucoup, au revoir",salutation,salutation,1
+"Merci beaucoup, au revoir",salutation,salutation,2
+"Merci beaucoup, au revoir",salutation,salutation,3
+Bonsoir,salutation,salutation,1
+Bonsoir,salutation,salutation,2
+Bonsoir,salutation,salutation,3
+Coucou !,salutation,salutation,1
+Coucou !,salutation,salutation,2
+Coucou !,salutation,salutation,3
+Je suis à Bè et je veux aller à BIA,itineraire,itineraire,1
+Je suis à Bè et je veux aller à BIA,itineraire,itineraire,2
+Je suis à Bè et je veux aller à BIA,itineraire,itineraire,3
+Comment aller à Adidogomé depuis Zanguéra ?,itineraire,itineraire,1
+Comment aller à Adidogomé depuis Zanguéra ?,itineraire,itineraire,2
+Comment aller à Adidogomé depuis Zanguéra ?,itineraire,itineraire,3
+Je pars de Todman pour Atikoumé,itineraire,itineraire,1
+Je pars de Todman pour Atikoumé,itineraire,itineraire,2
+Je pars de Todman pour Atikoumé,itineraire,itineraire,3
+Quel bus prendre pour aller au campus ?,itineraire,itineraire,1
+Quel bus prendre pour aller au campus ?,itineraire,itineraire,2
+Quel bus prendre pour aller au campus ?,itineraire,itineraire,3
+Je veux me rendre à la douane,itineraire,itineraire,1
+Je veux me rendre à la douane,itineraire,itineraire,2
+Je veux me rendre à la douane,itineraire,itineraire,3
+Quel est le prix du ticket ?,autre,autre,1
+Quel est le prix du ticket ?,autre,autre,2
+Quel est le prix du ticket ?,autre,autre,3
+Est-ce que les bus roulent le dimanche ?,autre,autre,1
+Est-ce que les bus roulent le dimanche ?,autre,autre,2
+Est-ce que les bus roulent le dimanche ?,autre,autre,3
+Qui a créé cet assistant ?,autre,autre,1
+Qui a créé cet assistant ?,autre,autre,2
+Qui a créé cet assistant ?,autre,autre,3
+Quelle est la capitale du Togo ?,autre,autre,1
+Quelle est la capitale du Togo ?,autre,autre,2
+Quelle est la capitale du Togo ?,autre,autre,3
+Peux-tu m'aider avec autre chose ?,autre,autre,1
+Peux-tu m'aider avec autre chose ?,autre,autre,2
+Peux-tu m'aider avec autre chose ?,autre,autre,3

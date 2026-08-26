@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant SOTRAL — Itinéraires en langage naturel</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12283F; --route:#1F4E79; --transit:#2E74B5; --signal:#ED7D31;
+    --ok:#2F7D5E; --paper:#F6F4EF; --surface:#FFFFFF; --line:#E3DFD6;
+  }
+  *{box-sizing:border-box;}
+  html,body{ height:100%; margin:0; }
+  body{
+    min-height:100vh; color:var(--ink); font-family:'Inter',sans-serif;
+    background:
+      radial-gradient(circle at 8% 12%, rgba(46,116,181,.10), transparent 40%),
+      radial-gradient(circle at 92% 85%, rgba(237,125,49,.10), transparent 42%),
+      repeating-linear-gradient(115deg, rgba(31,78,121,.05) 0 2px, transparent 2px 46px),
+      var(--paper);
+    display:flex; flex-direction:column;
+  }
+
+  .entete{
+    background:linear-gradient(120deg, var(--route), var(--transit));
+    color:#fff; padding:22px 32px; display:flex; align-items:center;
+    justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+  .entete .titre{ display:flex; align-items:center; gap:14px; }
+  .entete .titre .emoji{ font-size:34px; }
+  .entete h1{ font-family:'Space Grotesk',sans-serif; font-size:24px; font-weight:700; margin:0; }
+  .entete p{ margin:2px 0 0; font-size:13px; color:#D7E6F2; }
+  .droite-entete{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .statut-live{
+    display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px; background:rgba(255,255,255,.14); padding:8px 14px; border-radius:24px;
+  }
+  .point-live{ width:8px; height:8px; border-radius:50%; background:#6EE7A8; animation:respire 1.8s infinite; }
+  @keyframes respire{ 0%{box-shadow:0 0 0 0 rgba(110,231,168,.6);} 70%{box-shadow:0 0 0 8px rgba(110,231,168,0);} 100%{box-shadow:0 0 0 0 rgba(110,231,168,0);} }
+
+  .interrupteur{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:#fff; cursor:pointer; user-select:none; }
+  .interrupteur .piste{ width:36px; height:20px; border-radius:12px; background:rgba(255,255,255,.25); position:relative; transition:background .2s; }
+  .interrupteur .curseur{ width:16px; height:16px; border-radius:50%; background:#fff; position:absolute; top:2px; left:2px; transition:left .2s; }
+  .interrupteur.actif .piste{ background:var(--signal); }
+  .interrupteur.actif .curseur{ left:18px; }
+
+  /* ---------- Bouton "Mon profil" (13/08, refonte) : icône + libellé clair,
+     menu positionné en fixed via JS pour ne jamais être masqué par la carte ---------- */
+  .bouton-profil{
+    display:flex; align-items:center; gap:7px; background:rgba(255,255,255,.16); border:none;
+    color:#fff; padding:8px 15px 8px 10px; border-radius:24px; font-size:12.5px; font-weight:600;
+    cursor:pointer; transition:background .15s; font-family:'Inter',sans-serif;
+  }
+  .bouton-profil:hover{ background:rgba(255,255,255,.28); }
+  .bouton-profil .icone-profil{ font-size:16px; }
+
+  .menu-profil{
+    position:fixed; width:250px; background:#fff; border-radius:14px;
+    box-shadow:0 24px 50px -16px rgba(18,40,63,.5); border:1px solid var(--line);
+    padding:18px; opacity:0; pointer-events:none; transform:translateY(-6px);
+    transition:opacity .15s, transform .15s; z-index:9999;
+  }
+  .menu-profil.ouvert{ opacity:1; pointer-events:auto; transform:translateY(0); }
+  .menu-profil .email{ font-size:13.5px; font-weight:700; color:var(--ink); word-break:break-all; margin:0 0 2px; }
+  .menu-profil .depuis{ font-size:11.5px; color:#8A96A3; margin:0 0 14px; }
+  .menu-profil .stats-mini{ display:flex; gap:8px; margin-bottom:14px; }
+  .menu-profil .stat-mini{ flex:1; background:var(--paper); border-radius:10px; padding:9px; text-align:center; }
+  .menu-profil .stat-mini .v{ font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:600; color:var(--route); }
+  .menu-profil .stat-mini .l{ font-size:10px; color:#8A96A3; }
+  .menu-profil a{ display:block; text-align:center; padding:9px; border-radius:9px; font-size:12.5px; text-decoration:none; font-weight:600; }
+  .menu-profil a.deco{ color:#C0392B; background:#FBE4D5; margin-top:4px; }
+  .menu-profil a.deco:hover{ background:#F6D2BC; }
+
+  .corps{ flex:1; display:grid; grid-template-columns:60px 1.1fr 1fr; gap:20px; padding:22px 28px 28px; min-height:0; }
+  @media (max-width:900px){ .corps{ grid-template-columns:60px 1fr; } .panneau-carte{ display:none; } }
+
+  .rail{ display:flex; flex-direction:column; align-items:center; gap:10px; padding-top:4px; }
+  .bouton-rail{
+    width:44px; height:44px; border-radius:14px; border:1px solid var(--line); background:var(--surface);
+    display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer;
+    transition:background .15s, transform .1s; color:var(--route); position:relative;
+  }
+  .bouton-rail:hover{ background:#EFF3F7; transform:translateY(-1px); }
+
+  .panneau-historique{
+    position:fixed; top:0; left:0; height:100%; width:290px; background:var(--surface);
+    box-shadow:8px 0 30px -10px rgba(18,40,63,.35); transform:translateX(-100%);
+    transition:transform .22s ease-out; z-index:9998; display:flex; flex-direction:column; padding:18px 14px;
+  }
+  .panneau-historique.ouvert{ transform:translateX(0); }
+  .panneau-historique h3{ font-family:'Space Grotesk',sans-serif; font-size:15px; color:var(--route); margin:4px 6px 14px; }
+  .liste-conversations{ overflow-y:auto; display:flex; flex-direction:column; gap:5px; }
+  .item-conversation{
+    padding:10px 12px; border-radius:10px; font-size:13px; cursor:pointer; color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:background .12s;
+  }
+  .item-conversation:hover{ background:#EFF3F7; }
+  .item-conversation.actif{ background:#E3EBF3; font-weight:600; }
+  .fond-assombri{
+    position:fixed; inset:0; background:rgba(18,40,63,.25); z-index:9997; opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .fond-assombri.visible{ opacity:1; pointer-events:auto; }
+
+  .panneau{ background:var(--surface); border-radius:20px; border:1px solid var(--line);
+            box-shadow:0 20px 44px -26px rgba(18,40,63,.35); display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .panneau-chat{ padding:20px 20px 16px; }
+  #chat{ flex:1; overflow-y:auto; padding:6px 4px 10px; display:flex; flex-direction:column; gap:10px; min-height:0; }
+  .msg{ max-width:78%; padding:11px 15px; border-radius:16px; font-size:14.5px; line-height:1.55; animation:apparait .25s ease-out; }
+  @keyframes apparait{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+  .usager{ background:var(--route); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
+  .assistant{ background:#EFF3F7; color:var(--ink); align-self:flex-start; border-bottom-left-radius:4px; white-space:pre-line; position:relative; }
+  .assistant .ligne-badge{ display:inline-block; font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:12.5px; background:var(--transit); color:#fff; padding:1px 7px; border-radius:6px; margin:0 2px; }
+  .assistant .lieu{ font-weight:600; color:var(--route); }
+  .assistant .chargement{ display:inline-flex; gap:4px; align-items:center; }
+  .point-charge{ width:6px; height:6px; border-radius:50%; background:#9AA7B2; animation:pulse 1s infinite ease-in-out; }
+  .point-charge:nth-child(2){ animation-delay:.15s; }
+  .point-charge:nth-child(3){ animation-delay:.3s; }
+  @keyframes pulse{ 0%,80%,100%{opacity:.25;} 40%{opacity:1;} }
+
+  .zone-saisie{ display:flex; gap:8px; margin-top:14px; }
+  #message{ flex:1; padding:12px 16px; border-radius:24px; border:1.5px solid var(--line); font-family:'Inter',sans-serif; font-size:14.5px; outline:none; transition:border-color .15s, box-shadow .15s; }
+  #message:focus{ border-color:var(--transit); box-shadow:0 0 0 3px rgba(46,116,181,.15); }
+  #micro, #envoyer{ width:46px; height:46px; border-radius:50%; border:none; color:#fff; font-size:18px; cursor:pointer;
+                     display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background .15s, transform .1s; }
+  #envoyer{ background:var(--signal); }
+  #envoyer:hover{ background:#D96B24; }
+  #envoyer.mode-arret{ background:#C0392B; }
+  #envoyer.mode-arret:hover{ background:#A93226; }
+  #micro{ background:var(--transit); }
+  #micro:hover{ background:var(--route); }
+  #micro.ecoute{ background:#C0392B; animation:pulse-micro 1s infinite; }
+  @keyframes pulse-micro{ 0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.5);} 50%{box-shadow:0 0 0 8px rgba(192,57,43,0);} }
+
+  .suggestions{ display:flex; flex-wrap:wrap; gap:7px; margin-top:12px; }
+  .suggestion{ font-size:12.5px; padding:7px 12px; border-radius:16px; background:#EFF3F7; color:var(--route); border:1px solid var(--line); cursor:pointer; }
+  .suggestion:hover{ background:#E3EBF3; }
+  .suggestion.speciale{ background:#E2EFDA; color:var(--ok); border-color:#C9E0BE; font-weight:600; }
+  .suggestion.speciale:hover{ background:#D3E7C9; }
+  .suggestion.historique{ background:#EAF1FB; color:var(--route); border-color:#C6D9EE; font-weight:600; }
+  .suggestion.historique:hover{ background:#D6E4F5; }
+
+  .panneau-carte{ padding:18px 18px 16px; }
+  .panneau-carte h2{ font-family:'Space Grotesk',sans-serif; font-size:15px; margin:0 0 10px; color:var(--route); display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .panneau-carte h2::before{ content:"◈"; color:var(--signal); }
+  #carte{ flex:1; min-height:0; border-radius:14px; border:1px solid var(--line); }
+  .legende{ display:flex; gap:14px; margin-top:10px; font-size:12px; color:#5B6672; flex-wrap:wrap; flex-shrink:0; }
+  .legende span{ display:inline-flex; align-items:center; gap:5px; }
+  .puce{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+</style>
+</head>
+<body>
+  <div class="entete">
+    <div class="titre">
+      <span class="emoji">🚌</span>
+      <div>
+        <h1>Assistant SOTRAL</h1>
+        <p>Décrivez votre trajet en langage naturel, ou parlez au micro 🎤</p>
+      </div>
+    </div>
+    <div class="droite-entete">
+      <div class="interrupteur" id="interrupteur-voix">
+        <span>🔊 Lire les réponses</span>
+        <div class="piste"><div class="curseur"></div></div>
+      </div>
+      <div class="statut-live"><span class="point-live"></span>RÉSEAU SOTRAL — LOMÉ</div>
+      <button class="bouton-profil" id="bouton-profil">
+        <span class="icone-profil">👤</span> Mon profil
+      </button>
+    </div>
+  </div>
+
+  <div class="fond-assombri" id="fond-assombri"></div>
+  <div class="panneau-historique" id="panneau-historique">
+    <h3>💬 Vos discussions</h3>
+    <div class="liste-conversations" id="liste-conversations"></div>
+  </div>
+
+  <div class="menu-profil" id="menu-profil">
+    <p class="email" id="profil-email">…</p>
+    <p class="depuis" id="profil-depuis">…</p>
+    <div class="stats-mini">
+      <div class="stat-mini"><div class="v" id="profil-conversations">–</div><div class="l">Discussions</div></div>
+      <div class="stat-mini"><div class="v" id="profil-messages">–</div><div class="l">Messages</div></div>
+    </div>
+    <a class="deco" href="/deconnexion">Se déconnecter</a>
+  </div>
+
+  <div class="corps">
+    <div class="rail">
+      <div class="bouton-rail" id="bouton-nouvelle" title="Nouvelle discussion">➕</div>
+      <div class="bouton-rail" id="bouton-historique" title="Voir mes discussions">💬</div>
+      <a class="bouton-rail" href="/dashboard-html" title="Tableau de bord" style="text-decoration:none;">📊</a>
+    </div>
+
+    <div class="panneau panneau-chat">
+      <div id="chat"></div>
+      <div class="zone-saisie">
+        <input type="text" id="message" placeholder="Ex. : je suis à Bè, je veux aller à Adidogomé…" autocomplete="off">
+        <button id="micro" aria-label="Parler">🎤</button>
+        <button id="envoyer" aria-label="Envoyer">➤</button>
+      </div>
+      <div class="suggestions">
+        <span class="suggestion speciale" data-msg="quels arrêts sont à proximité ?">📍 Arrêts proches</span>
+        <span class="suggestion historique" data-msg="mes trajets recents">📋 Mes trajets</span>
+        <span class="suggestion" data-msg="Je suis à Bè et je veux aller à BIA">Bè → BIA</span>
+        <span class="suggestion" data-msg="Quelles lignes desservent BIA ?">Lignes à BIA</span>
+        <span class="suggestion" data-msg="Est-ce que les bus roulent le dimanche ?">Jours de service</span>
+      </div>
+    </div>
+
+    <div class="panneau panneau-carte">
+      <h2>Itinéraire sur la carte</h2>
+      <div id="carte"></div>
+      <div class="legende">
+        <span><i class="puce" style="background:#2F7D5E"></i>Départ</span>
+        <span><i class="puce" style="background:#ED7D31"></i>Correspondance</span>
+        <span><i class="puce" style="background:#C0392B"></i>Arrivée</span>
+      </div>
+    </div>
+  </div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const chat = document.getElementById("chat");
+const champMessage = document.getElementById("message");
+const boutonEnvoyer = document.getElementById("envoyer");
+const boutonMicro = document.getElementById("micro");
+const interrupteurVoix = document.getElementById("interrupteur-voix");
+const panneauHistorique = document.getElementById("panneau-historique");
+const fondAssombri = document.getElementById("fond-assombri");
+const listeConversations = document.getElementById("liste-conversations");
+const boutonProfil = document.getElementById("bouton-profil");
+const menuProfil = document.getElementById("menu-profil");
+let idConversationActive = null;
+let profilCharge = false;
+
+// ---------- Menu profil (13/08, refonte) : position calculée en JS
+// (position:fixed), toujours au-dessus de tout, y compris la carte ----------
+boutonProfil.addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const ouvert = menuProfil.classList.contains("ouvert");
+  if (ouvert) {
+    menuProfil.classList.remove("ouvert");
+    return;
+  }
+  const rect = boutonProfil.getBoundingClientRect();
+  menuProfil.style.top = (rect.bottom + 8) + "px";
+  menuProfil.style.right = (window.innerWidth - rect.right) + "px";
+  menuProfil.classList.add("ouvert");
+
+  if (!profilCharge) {
+    try {
+      const reponse = await fetch("/profil-donnees");
+      const data = await reponse.json();
+      document.getElementById("profil-email").textContent = data.email;
+      const date = new Date(data.cree_le);
+      document.getElementById("profil-depuis").textContent = "Membre depuis le " + date.toLocaleDateString("fr-FR");
+      document.getElementById("profil-conversations").textContent = data.nb_conversations;
+      document.getElementById("profil-messages").textContent = data.nb_messages;
+      profilCharge = true;
+    } catch (err) { console.log("Profil non chargé :", err); }
+  }
+});
+document.addEventListener("click", () => menuProfil.classList.remove("ouvert"));
+menuProfil.addEventListener("click", (e) => e.stopPropagation());
+window.addEventListener("resize", () => menuProfil.classList.remove("ouvert"));
+
+let lectureVocaleActivee = false;
+interrupteurVoix.addEventListener("click", () => {
+  lectureVocaleActivee = !lectureVocaleActivee;
+  interrupteurVoix.classList.toggle("actif", lectureVocaleActivee);
+});
+
+function lireAVoixHaute(texte) {
+  if (!lectureVocaleActivee || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const texteNettoye = texte.replace(/«|»/g, "");
+  const enonce = new SpeechSynthesisUtterance(texteNettoye);
+  enonce.lang = "fr-FR"; enonce.rate = 1.0;
+  window.speechSynthesis.speak(enonce);
+}
+
+let reconnaissance = null;
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SpeechRecognitionAPI) {
+  reconnaissance = new SpeechRecognitionAPI();
+  reconnaissance.lang = "fr-FR"; reconnaissance.continuous = false; reconnaissance.interimResults = false;
+  reconnaissance.onstart = () => boutonMicro.classList.add("ecoute");
+  reconnaissance.onend = () => boutonMicro.classList.remove("ecoute");
+  reconnaissance.onerror = () => boutonMicro.classList.remove("ecoute");
+  reconnaissance.onresult = (evenement) => {
+    champMessage.value = evenement.results[0][0].transcript;
+    champMessage.focus(); champMessage.select();
+  };
+  boutonMicro.addEventListener("click", () => {
+    if (boutonMicro.classList.contains("ecoute")) { reconnaissance.stop(); } else { reconnaissance.start(); }
+  });
+} else { boutonMicro.style.display = "none"; }
+
+function mettreEnForme(texte) {
+  let t = texte.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  t = t.replace(/\b(L\d{1,2})\b/g, '<span class="ligne-badge">$1</span>');
+  t = t.replace(/«\s*([^»]+)\s*»/g, '« <span class="lieu">$1</span> »');
+  return t;
+}
+function ajouterMessage(texte, classe, brut=false) {
+  const div = document.createElement("div");
+  div.className = "msg " + classe;
+  div.innerHTML = brut ? texte : mettreEnForme(texte);
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+function viderChat() { chat.innerHTML = ""; }
+
+async function chargerListeConversations() {
+  const reponse = await fetch("/conversations");
+  const liste = await reponse.json();
+  listeConversations.innerHTML = "";
+  liste.forEach(c => {
+    const div = document.createElement("div");
+    div.className = "item-conversation" + (c.id === idConversationActive ? " actif" : "");
+    div.textContent = c.titre;
+    div.addEventListener("click", () => ouvrirConversation(c.id));
+    listeConversations.appendChild(div);
+  });
+  return liste;
+}
+
+async function ouvrirConversation(id) {
+  const reponse = await fetch("/conversations/" + id);
+  const messages = await reponse.json();
+  idConversationActive = id;
+  viderChat();
+  messages.forEach(m => ajouterMessage(m.contenu, m.role === "usager" ? "usager" : "assistant"));
+  fermerPanneauHistorique();
+  chargerListeConversations();
+}
+
+async function demarrerNouvelleConversation() {
+  const reponse = await fetch("/conversations/nouvelle", { method: "POST" });
+  const data = await reponse.json();
+  idConversationActive = data.id;
+  viderChat();
+  fermerPanneauHistorique();
+  chargerListeConversations();
+}
+
+function ouvrirPanneauHistorique() {
+  panneauHistorique.classList.add("ouvert");
+  fondAssombri.classList.add("visible");
+  chargerListeConversations();
+}
+function fermerPanneauHistorique() {
+  panneauHistorique.classList.remove("ouvert");
+  fondAssombri.classList.remove("visible");
+}
+
+document.getElementById("bouton-nouvelle").addEventListener("click", demarrerNouvelleConversation);
+document.getElementById("bouton-historique").addEventListener("click", ouvrirPanneauHistorique);
+fondAssombri.addEventListener("click", fermerPanneauHistorique);
+
+async function initialiserConversation() {
+  const liste = await chargerListeConversations();
+  if (liste.length > 0) { await ouvrirConversation(liste[0].id); }
+  else { await demarrerNouvelleConversation(); }
+}
+initialiserConversation();
+
+let position = null;
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    (p) => { position = { latitude: p.coords.latitude, longitude: p.coords.longitude }; },
+    () => {}
+  );
+}
+
+const carte = L.map("carte", { zoomControl: true }).setView([6.1319, 1.2228], 12);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 18 }).addTo(carte);
+let coucheTrajet = null;
+function icone(couleur) {
+  return L.divIcon({ className: "", html: `<div style="width:16px;height:16px;border-radius:50%;background:${couleur};border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
+}
+async function actualiserCarte() {
+  try {
+    const reponse = await fetch("http://127.0.0.1:8000/trajet");
+    const points = await reponse.json();
+    const valides = points.filter(p => p.latitude !== null && p.longitude !== null);
+    if (valides.length === 0) return;
+    if (coucheTrajet) carte.removeLayer(coucheTrajet);
+    const groupe = L.featureGroup();
+    const coords = valides.map(p => [p.latitude, p.longitude]);
+    valides.forEach((p, i) => {
+      const couleur = (i === 0) ? "#2F7D5E" : (i === valides.length - 1) ? "#C0392B" : "#ED7D31";
+      L.marker([p.latitude, p.longitude], { icon: icone(couleur) }).addTo(groupe).bindPopup(`<strong>${p.nom}</strong>`);
+    });
+    L.polyline(coords, { color: "#2E74B5", weight: 4, opacity: .85 }).addTo(groupe);
+    groupe.addTo(carte);
+    coucheTrajet = groupe;
+    carte.fitBounds(groupe.getBounds(), { padding: [28, 28] });
+  } catch (e) { console.log("Carte non actualisée :", e); }
+}
+
+let controleurEnCours = null;
+function passerEnModeArret() { boutonEnvoyer.textContent = "■"; boutonEnvoyer.classList.add("mode-arret"); }
+function passerEnModeEnvoi() { boutonEnvoyer.textContent = "➤"; boutonEnvoyer.classList.remove("mode-arret"); controleurEnCours = null; }
+
+async function envoyerTexte(texte) {
+  if (controleurEnCours) return;
+  if (!texte) return;
+  ajouterMessage(texte, "usager");
+  champMessage.value = "";
+  const corps = { message: texte };
+  if (position) { corps.latitude = position.latitude; corps.longitude = position.longitude; }
+  const enCours = ajouterMessage(
+    '<span class="chargement"><span class="point-charge"></span><span class="point-charge"></span><span class="point-charge"></span></span>',
+    "assistant", true
+  );
+  controleurEnCours = new AbortController();
+  passerEnModeArret();
+  try {
+    const reponse = await fetch("http://127.0.0.1:8000/message", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corps), signal: controleurEnCours.signal,
+    });
+    const data = await reponse.json();
+    enCours.innerHTML = mettreEnForme(data.reponse);
+    chat.scrollTop = chat.scrollHeight;
+    lireAVoixHaute(data.reponse);
+    actualiserCarte();
+    chargerListeConversations();
+    profilCharge = false;
+  } catch (e) {
+    if (e.name === "AbortError") {
+      enCours.textContent = "— Réponse interrompue —"; enCours.style.fontStyle = "italic"; enCours.style.opacity = "0.7";
+    } else { enCours.textContent = "Impossible de joindre l'assistant. Vérifiez que le serveur est lancé."; }
+  } finally { passerEnModeEnvoi(); }
+}
+
+boutonEnvoyer.addEventListener("click", () => {
+  if (controleurEnCours) { controleurEnCours.abort(); } else { envoyerTexte(champMessage.value.trim()); }
+});
+champMessage.addEventListener("keypress", (e) => { if (e.key === "Enter" && !controleurEnCours) envoyerTexte(champMessage.value.trim()); });
+document.querySelectorAll(".suggestion").forEach(el => { el.addEventListener("click", () => envoyerTexte(el.dataset.msg)); });
+</script>
+</body>
+</html>

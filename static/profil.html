@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mon profil — Assistant SOTRAL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --route:#1F4E79; --transit:#2E74B5; --signal:#ED7D31; --ok:#2F7D5E; --paper:#F6F4EF; --line:#E3DFD6; --ink:#12283F; }
+  *{box-sizing:border-box;}
+  body{ margin:0; min-height:100vh; font-family:'Inter',sans-serif; background:var(--paper); }
+  .entete{ background:linear-gradient(120deg, var(--route), var(--transit)); color:#fff; padding:22px 32px;
+           display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  .entete h1{ font-family:'Space Grotesk',sans-serif; font-size:22px; margin:0; }
+  .entete a{ color:#fff; background:rgba(255,255,255,.16); padding:8px 16px; border-radius:20px; text-decoration:none; font-size:13px; }
+  .entete a:hover{ background:rgba(255,255,255,.28); }
+  .corps{ max-width:640px; margin:36px auto; padding:0 20px; }
+  .carte-profil{ background:#fff; border-radius:20px; padding:32px; box-shadow:0 20px 44px -26px rgba(18,40,63,.35); border:1px solid var(--line); }
+  .avatar{ width:64px; height:64px; border-radius:50%; background:linear-gradient(120deg, var(--route), var(--transit));
+           display:flex; align-items:center; justify-content:center; color:#fff; font-size:26px; font-weight:700;
+           font-family:'Space Grotesk',sans-serif; margin-bottom:18px; }
+  .email{ font-size:20px; font-weight:700; color:var(--ink); margin:0 0 4px; }
+  .depuis{ font-size:13px; color:#667; margin:0 0 28px; }
+  .stats{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .stat{ background:var(--paper); border-radius:14px; padding:18px; text-align:center; }
+  .stat .valeur{ font-family:'IBM Plex Mono',monospace; font-size:28px; font-weight:600; color:var(--route); }
+  .stat .label{ font-size:12.5px; color:#5B6672; margin-top:4px; }
+  .deconnexion{ display:block; text-align:center; margin-top:26px; color:#C0392B; text-decoration:none; font-size:13.5px; font-weight:600; }
+  .deconnexion:hover{ text-decoration:underline; }
+  #chargement{ text-align:center; padding:60px; color:#888; }
+</style>
+</head>
+<body>
+  <div class="entete">
+    <h1>👤 Mon profil</h1>
+    <a href="/app">← Retour au chat</a>
+  </div>
+  <div class="corps">
+    <div id="chargement">Chargement...</div>
+    <div class="carte-profil" id="contenu" style="display:none;">
+      <div class="avatar" id="avatar"></div>
+      <p class="email" id="email"></p>
+      <p class="depuis" id="depuis"></p>
+      <div class="stats">
+        <div class="stat"><div class="valeur" id="nb-conversations"></div><div class="label">Conversations</div></div>
+        <div class="stat"><div class="valeur" id="nb-messages"></div><div class="label">Messages échangés</div></div>
+      </div>
+      <a class="deconnexion" href="/deconnexion">Se déconnecter</a>
+    </div>
+  </div>
+<script>
+async function charger() {
+  try {
+    const reponse = await fetch("/profil-donnees");
+    const data = await reponse.json();
+    document.getElementById("avatar").textContent = data.email[0].toUpperCase();
+    document.getElementById("email").textContent = data.email;
+    const date = new Date(data.cree_le);
+    document.getElementById("depuis").textContent = "Membre depuis le " + date.toLocaleDateString("fr-FR");
+    document.getElementById("nb-conversations").textContent = data.nb_conversations;
+    document.getElementById("nb-messages").textContent = data.nb_messages;
+    document.getElementById("chargement").style.display = "none";
+    document.getElementById("contenu").style.display = "block";
+  } catch (e) {
+    document.getElementById("chargement").textContent = "Impossible de charger le profil.";
+  }
+}
+charger();
+</script>
+</body>
+</html>

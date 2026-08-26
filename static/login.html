@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connexion — Assistant SOTRAL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --route:#1F4E79; --transit:#2E74B5; --signal:#ED7D31; --ok:#2F7D5E;
+    --paper:#F6F4EF; --line:#E3DFD6; --ink:#12283F;
+  }
+  *{box-sizing:border-box;}
+  html,body{ height:100%; margin:0; }
+  body{
+    display:flex; align-items:center; justify-content:center; font-family:'Inter',sans-serif;
+    padding:24px; position:relative; overflow:hidden;
+    background:linear-gradient(180deg, #0F2038 0%, #1F4E79 55%, #2E74B5 100%);
+  }
+  .scene{ position:fixed; inset:0; z-index:0; overflow:hidden; }
+  .etoile{ position:absolute; width:2px; height:2px; background:#fff; border-radius:50%; animation:scintille 3s infinite ease-in-out; }
+  @keyframes scintille{ 0%,100%{opacity:.15;} 50%{opacity:.9;} }
+  .ville{ position:absolute; bottom:90px; left:0; width:100%; height:130px;
+          background:linear-gradient(180deg, transparent, #0C1B30); }
+  .batiment{ position:absolute; bottom:0; background:#132A47; }
+  .route{ position:absolute; bottom:0; left:0; width:100%; height:90px; background:#0C1B30; }
+  .ligne-route{ position:absolute; bottom:44px; left:-100%; width:200%; height:4px;
+                background:repeating-linear-gradient(90deg, var(--signal) 0 40px, transparent 40px 80px);
+                animation:defile 3.5s linear infinite; opacity:.8; }
+  @keyframes defile{ from{ transform:translateX(0); } to{ transform:translateX(40px); } }
+  .bus{ position:absolute; bottom:18px; left:-140px; font-size:46px;
+        animation:roule 13s linear infinite; filter:drop-shadow(0 6px 10px rgba(0,0,0,.4)); }
+  @keyframes roule{ from{ left:-140px; } to{ left:110%; } }
+
+  .carte{
+    position:relative; z-index:1; background:#fff; border-radius:22px; width:100%; max-width:400px; overflow:hidden;
+    box-shadow:0 30px 60px -20px rgba(0,0,0,.45); animation:apparait .4s ease-out;
+  }
+  @keyframes apparait{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+  .entete-carte{
+    background:linear-gradient(120deg, var(--route), var(--transit)); padding:26px 30px 22px; text-align:center;
+  }
+  .entete-carte .emoji{ font-size:38px; filter:drop-shadow(0 3px 6px rgba(0,0,0,.25)); }
+  .entete-carte h1{ font-family:'Space Grotesk',sans-serif; font-size:21px; color:#fff; margin:8px 0 3px; }
+  .entete-carte p{ color:#D7E6F2; font-size:12.5px; margin:0; }
+  .perforation{
+    height:14px; background:var(--route);
+    -webkit-mask: radial-gradient(circle 4.5px at 18px 0, transparent 98%, black 100%) repeat-x;
+    mask: radial-gradient(circle 4.5px at 18px 0, transparent 98%, black 100%) repeat-x;
+    -webkit-mask-size:34px 14px; mask-size:34px 14px;
+  }
+  .corps-carte{ padding:30px 32px 32px; }
+  label{ font-size:12.5px; font-weight:600; color:var(--ink); display:block; margin:16px 0 6px; }
+  label:first-child{ margin-top:0; }
+  .champ{ position:relative; }
+  .champ .icone{ position:absolute; left:13px; top:50%; transform:translateY(-50%); font-size:15px; opacity:.55; }
+  input{
+    width:100%; padding:12px 13px 12px 38px; border:1.5px solid var(--line); border-radius:11px;
+    font-size:14px; outline:none; transition:border-color .15s, box-shadow .15s; font-family:'Inter',sans-serif;
+  }
+  input:focus{ border-color:var(--transit); box-shadow:0 0 0 3px rgba(46,116,181,.14); }
+  button{
+    width:100%; margin-top:22px; padding:13px; border:none; border-radius:11px;
+    background:linear-gradient(120deg, var(--signal), #D96B24); color:#fff; font-size:14.5px; font-weight:600;
+    cursor:pointer; transition:transform .12s, box-shadow .15s; box-shadow:0 10px 22px -10px rgba(237,125,49,.6);
+  }
+  button:hover{ transform:translateY(-1px); box-shadow:0 14px 26px -10px rgba(237,125,49,.7); }
+  button:active{ transform:translateY(0); }
+  .message{ margin-top:16px; padding:11px 13px; border-radius:9px; font-size:13px; display:none; align-items:center; gap:8px; }
+  .message.erreur{ background:#FBE4D5; color:#C0392B; display:flex; }
+  .message.succes{ background:#E2EFDA; color:#375623; display:flex; }
+  .lien{ text-align:center; margin-top:22px; font-size:13px; color:#667; }
+  .lien a{ color:var(--transit); text-decoration:none; font-weight:600; }
+  .lien a:hover{ text-decoration:underline; }
+  .badge-securite{
+    display:flex; align-items:center; justify-content:center; gap:6px; margin-top:20px;
+    font-size:11px; color:#8A96A3; font-family:'IBM Plex Mono',monospace;
+  }
+</style>
+</head>
+<body>
+  <div class="scene">
+    <div class="etoile" style="top:8%; left:10%; animation-delay:.2s;"></div>
+    <div class="etoile" style="top:15%; left:25%; animation-delay:1.1s;"></div>
+    <div class="etoile" style="top:6%; left:40%; animation-delay:.7s;"></div>
+    <div class="etoile" style="top:20%; left:60%; animation-delay:1.6s;"></div>
+    <div class="etoile" style="top:10%; left:75%; animation-delay:.4s;"></div>
+    <div class="etoile" style="top:18%; left:88%; animation-delay:2s;"></div>
+    <div class="ville">
+      <div class="batiment" style="left:2%; width:60px; height:70px;"></div>
+      <div class="batiment" style="left:9%; width:40px; height:110px;"></div>
+      <div class="batiment" style="left:16%; width:70px; height:50px;"></div>
+      <div class="batiment" style="left:26%; width:45px; height:95px;"></div>
+      <div class="batiment" style="left:34%; width:55px; height:65px;"></div>
+      <div class="batiment" style="left:44%; width:38px; height:120px;"></div>
+      <div class="batiment" style="left:52%; width:65px; height:75px;"></div>
+      <div class="batiment" style="left:62%; width:42px; height:100px;"></div>
+      <div class="batiment" style="left:71%; width:58px; height:55px;"></div>
+      <div class="batiment" style="left:80%; width:40px; height:90px;"></div>
+      <div class="batiment" style="left:89%; width:60px; height:65px;"></div>
+    </div>
+    <div class="route"><div class="ligne-route"></div></div>
+    <div class="bus">🚌</div>
+  </div>
+
+  <div class="carte">
+    <div class="entete-carte">
+      <div class="emoji">🚌</div>
+      <h1>Assistant SOTRAL</h1>
+      <p>Connectez-vous pour accéder à l'application</p>
+    </div>
+    <div class="perforation"></div>
+    <div class="corps-carte">
+      <form id="formulaire">
+        <label for="email">Adresse email</label>
+        <div class="champ"><span class="icone">✉️</span>
+          <input type="email" id="email" required placeholder="vous@exemple.com">
+        </div>
+        <label for="motdepasse">Mot de passe</label>
+        <div class="champ"><span class="icone">🔒</span>
+          <input type="password" id="motdepasse" required placeholder="••••••••">
+        </div>
+        <button type="submit">Se connecter</button>
+      </form>
+      <div class="message" id="message"></div>
+      <div class="lien">Pas encore de compte ? <a href="/inscription">Créer un compte</a></div>
+      <div class="badge-securite">🔐 CONNEXION SÉCURISÉE</div>
+    </div>
+  </div>
+<script>
+document.getElementById("formulaire").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("email").value;
+  const motdepasse = document.getElementById("motdepasse").value;
+  const zoneMessage = document.getElementById("message");
+
+  const reponse = await fetch("/auth/connexion", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({email, mot_de_passe: motdepasse}),
+  });
+  const data = await reponse.json();
+  zoneMessage.className = "message " + (data.succes ? "succes" : "erreur");
+  zoneMessage.innerHTML = (data.succes ? "✅ " : "⚠️ ") + data.message;
+  if (data.succes) { setTimeout(() => window.location.href = "/app", 600); }
+});
+</script>
+</body>
+</html>

@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Jeu de test chiffré (v3, 24/07). Le pipeline intégrant un LLM non
+"""Jeu de test chiffré (v3, corrigé). Le pipeline intégrant un LLM non
    déterministe, chaque cas d'itinéraire est répété plusieurs fois
    pour mesurer un taux de réussite statistique plutôt qu'un simple
-   succès/échec ponctuel."""
+   succès/échec ponctuel. Export CSV ajouté le 06/08 pour l'annexe G
+   du mémoire (le fichier précédent datait du 24/07, avant toutes
+   les corrections du pipeline)."""
 
 import time
+import csv
 from app.nlp import charger_arrets, analyser
 from app.assistant import repondre
 
 arrets = charger_arrets()
-NB_ESSAIS = 3  # répétitions par phrase, pour lisser la variabilité du LLM
+NB_ESSAIS = 3
 
 CAS_COMPREHENSION = [
     ("Je suis à Adidogomé et je veux aller à BIA", "AMBIGU", "BIA"),
@@ -22,8 +25,6 @@ CAS_COMPREHENSION = [
     ("je veux aller à Adjololo en partant de Djagble", "AUCUN", "Adjololo"),
 ]
 
-# Cas non ambigus uniquement (l'ambiguïté Adidogomé/Zanguéra est
-# retirée : elle constitue un succès SF8, pas un test d'itinéraire).
 CAS_ITINERAIRE = [
     "comment aller a todman depuis atikoume ?",
     "je suis à Atikoumé et je veux aller à Todman",
@@ -35,6 +36,8 @@ CAS_DIVERS = [
     "quelles correspondances à BIA ?", "combien de lignes avez-vous au total ?",
     "quel est le prix du ticket ?", "est-ce que les bus roulent le dimanche ?",
 ]
+
+lignes_csv = []  # accumule toutes les lignes pour l'export final
 
 
 def _verifier_champ(obtenu, methode, attendu):
@@ -48,7 +51,7 @@ def _verifier_champ(obtenu, methode, attendu):
 
 
 def evaluer_comprehension():
-    print("\n===== 1. TAUX DE COMPRÉHENSION (SF1, SF2, SF8) — déterministe, 1 essai =====")
+    print("\n===== 1. TAUX DE COMPRÉHENSION (SF1, SF2, SF8) =====")
     reussites = 0
     for phrase, dep_attendu, dest_attendu in CAS_COMPREHENSION:
         r = analyser(phrase, arrets)
@@ -56,13 +59,14 @@ def evaluer_comprehension():
                    _verifier_champ(r["destination"], r["methode_destination"], dest_attendu))
         reussites += int(succes)
         print(f"  [{'OK' if succes else 'ÉCHEC'}] {phrase}")
+        lignes_csv.append({"categorie": "comprehension", "phrase": phrase, "reussite_ou_temps": succes})
     taux = reussites / len(CAS_COMPREHENSION) * 100
     print(f"\n  Taux de compréhension : {reussites}/{len(CAS_COMPREHENSION)} = {taux:.1f}%")
     return taux
 
 
 def evaluer_itineraires():
-    print(f"\n===== 2. PERTINENCE DES ITINÉRAIRES (SF3) — {NB_ESSAIS} essais/phrase (LLM non déterministe) =====")
+    print(f"\n===== 2. PERTINENCE DES ITINÉRAIRES (SF3) — {NB_ESSAIS} essais/phrase =====")
     reussites_totales, essais_totaux, temps = 0, 0, []
     for phrase in CAS_ITINERAIRE:
         reussites_phrase = 0
@@ -74,12 +78,12 @@ def evaluer_itineraires():
             succes = "ligne" in reponse.lower() and "aucun itinéraire" not in reponse.lower()
             reussites_phrase += int(succes)
             essais_totaux += 1
-            if not succes:
-                print(f"    -> essai {essai+1} en échec : {reponse[:100]}")
+            lignes_csv.append({"categorie": "itineraire", "phrase": f"{phrase} (essai {essai+1})",
+                                "reussite_ou_temps": f"{succes} ({duree:.2f}s)"})
         reussites_totales += reussites_phrase
         print(f"  {phrase} : {reussites_phrase}/{NB_ESSAIS} essais réussis")
     taux = reussites_totales / essais_totaux * 100
-    temps_hors_premier = temps[1:]  # exclut le tout 1er appel (démarrage à froid)
+    temps_hors_premier = temps[1:] if len(temps) > 1 else temps
     temps_moyen = sum(temps_hors_premier) / len(temps_hors_premier)
     print(f"\n  Taux de réussite global : {reussites_totales}/{essais_totaux} = {taux:.1f}%")
     print(f"  Temps de réponse moyen (hors 1er appel à froid) : {temps_moyen:.2f} s")
@@ -94,6 +98,7 @@ def evaluer_divers():
         reponse = repondre(phrase, arrets)
         temps.append(time.perf_counter() - debut)
         print(f"  ({temps[-1]:.2f}s) {phrase} -> {reponse[:80]}...")
+        lignes_csv.append({"categorie": "divers", "phrase": phrase, "reussite_ou_temps": f"{temps[-1]:.2f}s"})
     temps_moyen = sum(temps[1:]) / len(temps[1:])
     print(f"\n  Temps de réponse moyen (hors 1er appel) : {temps_moyen:.2f} s")
     return temps_moyen
@@ -103,9 +108,16 @@ if __name__ == "__main__":
     tc = evaluer_comprehension()
     ti, tpsi = evaluer_itineraires()
     tpsd = evaluer_divers()
+
     print("\n" + "=" * 55)
     print("BILAN GLOBAL (à reporter dans le chapitre Résultats)")
     print("=" * 55)
     print(f"  Compréhension (dont ambiguïtés bien signalées) : {tc:.1f}%  (cible ≥ 90 %)")
     print(f"  Itinéraires corrects (moyenne sur {NB_ESSAIS} essais/phrase) : {ti:.1f}%  (cible ≥ 95 %)")
     print(f"  Temps de réponse moyen : {tpsi:.2f} s (itinéraires) / {tpsd:.2f} s (divers)  (cible < 3 s)")
+
+    with open("tests/resultats_evaluation.csv", "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["categorie", "phrase", "reussite_ou_temps"])
+        writer.writeheader()
+        writer.writerows(lignes_csv)
+    print("\nRésultats détaillés exportés dans tests/resultats_evaluation.csv")

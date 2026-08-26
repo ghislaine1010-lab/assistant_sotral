@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.env
+*.pdf
+*.png
+node_modules/
+.ipynb_checkpoints/
