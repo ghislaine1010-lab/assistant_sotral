@@ -13,7 +13,7 @@ from app.faits import (jours_de_service_connus, lignes_desservant,
                         correspondances_a, statistiques_reseau, prochains_departs,
                         arret_le_plus_proche, arrets_proches, coordonnees_arrets, geocoder_lieu,
                         ajouter_trajet_recent_bdd, trajets_recents_bdd,
-                        toutes_les_lignes_avec_trajet, informations_ligne)
+                        toutes_les_lignes_avec_trajet, informations_ligne, chercher_synonyme)
 from app.temps import jour_actuel, extraire_moment
 
 _memoires = {}
@@ -110,6 +110,13 @@ def _verifier(lieu_brut, nom_champ, arrets):
         return None, f"votre {nom_champ}", None
     if lieu_brut in arrets:
         return lieu_brut, None, None
+
+    # Vérifie d'abord les surnoms locaux connus (27/08), ex. "Grand
+    # Marché" -> "BIA", avant la recherche floue habituelle.
+    synonyme_trouve = chercher_synonyme(lieu_brut)
+    if synonyme_trouve and synonyme_trouve in arrets:
+        return synonyme_trouve, None, None
+
     nom, score, methode = trouver_arret(lieu_brut, arrets)
     if methode == "texte-ambigu":
         return None, ", ".join(f"« {o} »" for o in nom), nom

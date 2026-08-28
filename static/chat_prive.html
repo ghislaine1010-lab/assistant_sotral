@@ -274,12 +274,32 @@ interrupteurVoix.addEventListener("click", () => {
   interrupteurVoix.classList.toggle("actif", lectureVocaleActivee);
 });
 
+// Choix automatique de la meilleure voix française disponible
+// (27/08) -- privilégie les voix "en ligne" (Google, souvent bien
+// plus naturelles) plutôt que la voix robotique locale par défaut
+// de Linux (eSpeak), avec repli progressif si aucune n'est trouvée.
+let meilleureVoixFrancaise = null;
+function choisirMeilleureVoix() {
+  const voix = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("fr"));
+  if (voix.length === 0) return null;
+  const enLigneGoogle = voix.find(v => !v.localService && v.name.toLowerCase().includes("google"));
+  if (enLigneGoogle) return enLigneGoogle;
+  const enLigne = voix.find(v => !v.localService);
+  if (enLigne) return enLigne;
+  return voix[0];
+}
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.onvoiceschanged = () => { meilleureVoixFrancaise = choisirMeilleureVoix(); };
+  meilleureVoixFrancaise = choisirMeilleureVoix();
+}
+
 function lireAVoixHaute(texte) {
   if (!lectureVocaleActivee || !("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
   const texteNettoye = texte.replace(/«|»/g, "");
   const enonce = new SpeechSynthesisUtterance(texteNettoye);
-  enonce.lang = "fr-FR"; enonce.rate = 1.0;
+  enonce.lang = "fr-FR"; enonce.rate = 0.95; enonce.pitch = 1.0;
+  if (meilleureVoixFrancaise) enonce.voice = meilleureVoixFrancaise;
   window.speechSynthesis.speak(enonce);
 }
 

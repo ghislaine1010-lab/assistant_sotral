@@ -409,3 +409,20 @@ def informations_ligne(ref_demande):
     if not directions:
         return None
     return " <-> ".join(directions[:2]) if len(directions) >= 2 else directions[0]
+
+def chercher_synonyme(terme):
+    """Vérifie si le terme employé par l'usager est un surnom/synonyme
+    local connu (ex. « Grand Marché » pour « BIA »), enregistré dans
+    la table synonymes_arrets. Recherche insensible à la casse et aux
+    accents. Renvoie le vrai nom d'arrêt si trouvé, sinon None."""
+    if not terme:
+        return None
+    conn = connexion(); cur = conn.cursor()
+    cur.execute("""
+        SELECT arret_reel FROM synonymes_arrets
+        WHERE unaccent(lower(synonyme)) = unaccent(lower(%s))
+        LIMIT 1;
+    """, (terme,))
+    resultat = cur.fetchone()
+    cur.close(); conn.close()
+    return resultat[0] if resultat else None
