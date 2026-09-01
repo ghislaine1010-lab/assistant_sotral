@@ -15,7 +15,7 @@ import json
 # le conteneur lui-même -- il faut alors OLLAMA_HOST=http://host.docker.internal:11434
 # pour atteindre Ollama qui tourne sur la vraie machine hôte).
 _hote_ollama = os.getenv("OLLAMA_HOST")
-_client_ollama = ollama.Client(host=_hote_ollama) if _hote_ollama else ollama
+_client_ollama = ollama.Client(host=_hote_ollama, timeout=120) if _hote_ollama else ollama.Client(timeout=120)
 
 PROMPT_SYSTEME = """Tu es l'assistant conversationnel du réseau de bus SOTRAL à Lomé, au Togo.
 Pour chaque message de l'utilisateur, réponds UNIQUEMENT avec un objet JSON, sans aucun texte autour, de cette forme exacte :
