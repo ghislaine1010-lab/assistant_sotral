@@ -351,6 +351,17 @@ def repondre(phrase, arrets=None, position=None, utilisateur=None):
         return (f"D'après nos données, les bus SOTRAL circulent : {', '.join(jours)}. "
                 f"Nous n'avons pas de donnée confirmée pour les autres jours.")
 
+    # ---------- Tarifs (01/09) : réponse générale et sourcée, jamais
+    # de prix exact par trajet faute de grille tarifaire détaillée
+    # publiée par la SOTRAL. ----------
+    if any(m in p for m in ["tarif", "prix du billet", "prix du ticket", "combien ça coûte",
+                             "combien coute", "combien ca coute", "ça coûte combien"]):
+        return ("D'après les tarifs SOTRAL en vigueur depuis décembre 2024 (source : SOTRAL, "
+                 "relayé par Togo First), les trajets urbains coûtent entre 100 et 300 FCFA "
+                 "selon la distance, avec un tarif étudiant à 150 FCFA sur les lignes campus. "
+                 "Le prix exact de votre trajet dépend du palier de distance concerné ; nous "
+                 "vous invitons à confirmer ce montant auprès de l'agent à bord.")
+
     # ---------- Liste globale de toutes les lignes (25/08) ----------
     if any(m in p_norm for m in MOTS_TOUTES_LIGNES):
         return _formater_toutes_les_lignes()
