@@ -215,6 +215,7 @@
       <h2>Itinéraire sur la carte</h2>
       <div id="carte"></div>
       <div class="legende">
+        <span><i class="puce" style="background:#1F6FEB"></i>Votre position</span>
         <span><i class="puce" style="background:#2F7D5E"></i>Départ</span>
         <span><i class="puce" style="background:#ED7D31"></i>Correspondance</span>
         <span><i class="puce" style="background:#C0392B"></i>Arrivée</span>
@@ -404,14 +405,35 @@ let coucheTrajet = null;
 function icone(couleur) {
   return L.divIcon({ className: "", html: `<div style="width:16px;height:16px;border-radius:50%;background:${couleur};border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
 }
+function iconePosition() {
+  // Icône distincte (bleu, pulsation) pour "Votre position actuelle"
+  // (01/09) -- différenciée des points départ/correspondance/arrivée.
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:18px;height:18px;border-radius:50%;background:#1F6FEB;border:3px solid #fff;box-shadow:0 0 0 4px rgba(31,111,235,.25),0 1px 4px rgba(0,0,0,.4)"></div>`,
+    iconSize: [18, 18], iconAnchor: [9, 9],
+  });
+}
+
 async function actualiserCarte() {
   try {
     const reponse = await fetch("http://127.0.0.1:8000/trajet");
     const points = await reponse.json();
     const valides = points.filter(p => p.latitude !== null && p.longitude !== null);
-    if (valides.length === 0) return;
     if (coucheTrajet) carte.removeLayer(coucheTrajet);
     const groupe = L.featureGroup();
+
+    // Badge "Votre position actuelle" (01/09), ajouté dès que la
+    // géolocalisation est disponible, quel que soit l'état du trajet.
+    if (position) {
+      L.marker([position.latitude, position.longitude], { icon: iconePosition() })
+        .addTo(groupe).bindPopup("<strong>Votre position actuelle</strong>");
+    }
+
+    if (valides.length === 0) {
+      if (position) { groupe.addTo(carte); coucheTrajet = groupe; carte.setView([position.latitude, position.longitude], 15); }
+      return;
+    }
     const coords = valides.map(p => [p.latitude, p.longitude]);
     valides.forEach((p, i) => {
       const couleur = (i === 0) ? "#2F7D5E" : (i === valides.length - 1) ? "#C0392B" : "#ED7D31";

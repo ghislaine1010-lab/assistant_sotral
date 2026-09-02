@@ -426,3 +426,18 @@ def chercher_synonyme(terme):
     resultat = cur.fetchone()
     cur.close(); conn.close()
     return resultat[0] if resultat else None
+
+def distance_vers_arret(latitude, longitude, nom_arret):
+    """Calcule la distance approximative (en mètres) entre une position
+    GPS donnée et un arrêt précis, désigné par son nom (01/09). Renvoie
+    None si l'arrêt n'a pas de coordonnées connues."""
+    conn = connexion(); cur = conn.cursor()
+    cur.execute("""
+        SELECT SQRT(POWER(latitude - %s, 2) + POWER(longitude - %s, 2)) AS distance
+        FROM arrets WHERE nom = %s LIMIT 1;
+    """, (latitude, longitude, nom_arret))
+    resultat = cur.fetchone()
+    cur.close(); conn.close()
+    if not resultat or resultat[0] is None:
+        return None
+    return round(resultat[0] * 111320)
