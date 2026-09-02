@@ -456,7 +456,7 @@ function iconePosition() {
 
 async function actualiserCarte() {
   try {
-    const reponse = await fetch("http://127.0.0.1:8000/trajet");
+    const reponse = await fetch("/trajet");
     const points = await reponse.json();
     const valides = points.filter(p => p.latitude !== null && p.longitude !== null);
     if (coucheTrajet) carte.removeLayer(coucheTrajet);
@@ -503,7 +503,7 @@ async function envoyerTexte(texte) {
   controleurEnCours = new AbortController();
   passerEnModeArret();
   try {
-    const reponse = await fetch("http://127.0.0.1:8000/message", {
+    const reponse = await fetch("/message", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(corps), signal: controleurEnCours.signal,
     });
