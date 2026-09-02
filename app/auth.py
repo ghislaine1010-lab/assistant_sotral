@@ -145,3 +145,22 @@ def connecter(email, mot_de_passe):
     if not confirme:
         return False, "Veuillez d'abord confirmer votre adresse email (code reçu par email)."
     return True, "Connexion réussie."
+
+def enregistrer_prenom(email, prenom):
+    """Enregistre le prénom/pseudo choisi par l'usager, demandé une
+    seule fois après sa première connexion réussie (02/09), pour
+    personnaliser l'accueil dans une nouvelle conversation."""
+    conn = connexion(); cur = conn.cursor()
+    cur.execute("UPDATE utilisateurs SET prenom = %s WHERE email = %s;", (prenom.strip(), email))
+    conn.commit()
+    cur.close(); conn.close()
+
+
+def obtenir_prenom(email):
+    """Renvoie le prénom/pseudo enregistré pour cet usager, ou None
+    s'il n'en a pas encore choisi un."""
+    conn = connexion(); cur = conn.cursor()
+    cur.execute("SELECT prenom FROM utilisateurs WHERE email = %s;", (email,))
+    resultat = cur.fetchone()
+    cur.close(); conn.close()
+    return resultat[0] if resultat and resultat[0] else None

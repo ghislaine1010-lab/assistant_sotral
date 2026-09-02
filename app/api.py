@@ -18,7 +18,7 @@ from app.assistant import repondre, dernier_itineraire_carte
 from app.nlp import charger_arrets
 from app.faits import (tableau_de_bord, enregistrer_message,
                         creer_conversation, lister_conversations, messages_de_conversation, infos_profil)
-from app.auth import inscrire, confirmer, connecter
+from app.auth import inscrire, confirmer, connecter, enregistrer_prenom, obtenir_prenom
 
 load_dotenv()
 
@@ -59,6 +59,9 @@ class Confirmation(BaseModel):
     email: str
     code: str
 
+class Prenom(BaseModel):
+    prenom: str
+
 
 @app.get("/login")
 def page_login():
@@ -90,6 +93,27 @@ def api_connexion(identifiants: Identifiants, request: Request):
     if succes:
         request.session["email"] = identifiants.email
     return JSONResponse({"succes": succes, "message": message})
+
+
+@app.post("/auth/prenom")
+def api_enregistrer_prenom(donnees: Prenom, request: Request):
+    """Enregistre le prénom/pseudo de l'usager connecté (02/09),
+    demandé une seule fois après sa première connexion."""
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"succes": False, "message": "Non connecté."})
+    enregistrer_prenom(email, donnees.prenom)
+    return JSONResponse({"succes": True})
+
+
+@app.get("/auth/prenom")
+def api_obtenir_prenom(request: Request):
+    """Renvoie le prénom déjà enregistré pour l'usager connecté, ou
+    null s'il n'en a pas encore choisi un (02/09)."""
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"prenom": None})
+    return JSONResponse({"prenom": obtenir_prenom(email)})
 
 
 @app.get("/app")

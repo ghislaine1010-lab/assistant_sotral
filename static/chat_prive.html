@@ -389,7 +389,46 @@ async function initialiserConversation() {
   if (liste.length > 0) { await ouvrirConversation(liste[0].id); }
   else { await demarrerNouvelleConversation(); }
 }
+
+// Demande le prénom/pseudo une seule fois, à la première connexion,
+// puis affiche un message de bienvenue personnalisé (02/09).
+function accueillirAvecPrenom(prenom) {
+  ajouterMessage(`Bienvenue sur SOTRAL GO, ${prenom} ! Je suis votre assistant pour vos trajets en bus à Lomé. Où souhaitez-vous aller aujourd'hui ?`, "assistant");
+}
+
+async function verifierPrenomEtAccueillir() {
+  try {
+    const reponse = await fetch("/auth/prenom");
+    const data = await reponse.json();
+
+    if (data.prenom) {
+      accueillirAvecPrenom(data.prenom);
+      return;
+    }
+
+    const voile = document.getElementById("voile-prenom");
+    const champ = document.getElementById("champ-prenom");
+    const bouton = document.getElementById("bouton-valider-prenom");
+    voile.style.display = "flex";
+    champ.focus();
+
+    const valider = async () => {
+      const saisie = champ.value.trim();
+      if (!saisie) { champ.focus(); return; }
+      voile.style.display = "none";
+      await fetch("/auth/prenom", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prenom: saisie }),
+      });
+      accueillirAvecPrenom(saisie);
+    };
+    bouton.addEventListener("click", valider);
+    champ.addEventListener("keydown", (e) => { if (e.key === "Enter") valider(); });
+  } catch (e) { console.log("Accueil personnalisé non affiché :", e); }
+}
+
 initialiserConversation();
+verifierPrenomEtAccueillir();
 
 let position = null;
 if (navigator.geolocation) {
@@ -488,5 +527,21 @@ boutonEnvoyer.addEventListener("click", () => {
 champMessage.addEventListener("keypress", (e) => { if (e.key === "Enter" && !controleurEnCours) envoyerTexte(champMessage.value.trim()); });
 document.querySelectorAll(".suggestion").forEach(el => { el.addEventListener("click", () => envoyerTexte(el.dataset.msg)); });
 </script>
+<div id="voile-prenom" style="display:none; position:fixed; inset:0; background:rgba(18,40,63,.55); z-index:2000; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:18px; width:min(420px, 90vw); box-shadow:0 20px 60px rgba(0,0,0,.35); overflow:hidden; font-family:'Inter',sans-serif;">
+    <div style="background:var(--route); padding:22px 26px;">
+      <div style="font-family:'Space Grotesk',sans-serif; font-size:19px; font-weight:700; color:#fff;">Bienvenue sur SOTRAL GO !</div>
+      <div style="font-size:13px; color:rgba(255,255,255,.85); margin-top:4px;">Comment souhaitez-vous qu'on vous appelle ?</div>
+    </div>
+    <div style="padding:24px 26px;">
+      <input id="champ-prenom" type="text" placeholder="Votre prénom ou surnom" maxlength="100"
+        style="width:100%; padding:12px 14px; border:1.5px solid var(--line); border-radius:10px; font-size:15px; font-family:'Inter',sans-serif; outline:none;">
+      <button id="bouton-valider-prenom"
+        style="width:100%; margin-top:16px; padding:12px; background:var(--signal); color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif;">
+        Valider
+      </button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
