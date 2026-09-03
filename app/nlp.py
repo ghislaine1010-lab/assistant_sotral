@@ -151,3 +151,29 @@ def analyser(phrase, arrets):
     destination, score_a, methode_a = trouver_arret(fragments["destination"], arrets, contexte=contextes["destination"])
     return {"depart": depart, "score_depart": score_d, "methode_depart": methode_d,
             "destination": destination, "score_destination": score_a, "methode_destination": methode_a}
+
+
+def detecter_deux_lieux_juxtaposes(phrase, arrets):
+    """Règle de secours (02/09) pour les messages très courts et sans
+    verbe ni marqueur (ex. « Bè BIA »), que le LLM classe parfois à
+    tort comme une salutation. N'est tentée que sur des phrases
+    courtes (5 mots maximum), pour éviter tout faux positif sur une
+    vraie conversation plus longue. Essaie de couper la phrase en deux
+    morceaux non vides ; si chacun correspond (même de façon ambiguë)
+    à un ou plusieurs arrêts réels, renvoie les FRAGMENTS BRUTS
+    (partie_gauche, partie_droite) -- la résolution fine, y compris la
+    gestion d'une éventuelle ambiguïté, est ensuite déléguée au
+    pipeline habituel (_resoudre_les_deux), qui sait déjà demander une
+    clarification si besoin. Renvoie (None, None) si aucune coupure ne
+    correspond à rien de connu."""
+    mots = phrase.strip().split()
+    if len(mots) == 0 or len(mots) > 5:
+        return None, None
+    for i in range(1, len(mots)):
+        partie_gauche = " ".join(mots[:i])
+        partie_droite = " ".join(mots[i:])
+        nom_g, _, methode_g = trouver_arret(partie_gauche, arrets)
+        nom_d, _, methode_d = trouver_arret(partie_droite, arrets)
+        if nom_g and nom_d and methode_g != "aucune" and methode_d != "aucune":
+            return partie_gauche, partie_droite
+    return None, None

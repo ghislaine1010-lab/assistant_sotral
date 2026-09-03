@@ -6,7 +6,7 @@
    de toutes les lignes du réseau + le détail d'une ligne précise."""
 
 import re
-from app.nlp import charger_arrets, trouver_arret, normaliser, analyser
+from app.nlp import charger_arrets, trouver_arret, normaliser, analyser, detecter_deux_lieux_juxtaposes
 from app.recommandation import trouver_itineraire, comparer_itineraires, formater_comparaison
 from app.llm import interpreter_message
 from app.faits import (jours_de_service_connus, lignes_desservant,
@@ -436,6 +436,17 @@ def repondre(phrase, arrets=None, position=None, utilisateur=None):
         resultat_regles = analyser(phrase, arrets)
         if resultat_regles["depart"] or resultat_regles["destination"]:
             return _traiter_resultat_deja_resolu(memoire, resultat_regles, phrase, utilisateur, position)
+
+    # ---------- Règle de secours (02/09) : phrase très courte, sans
+    # marqueur ni verbe (ex. "Bè BIA"), que le LLM classe parfois à
+    # tort comme une salutation. Tentative de découpage en deux lieux
+    # juxtaposés, uniquement si chacun correspond sans ambiguïté. ----------
+    if intention in ("salutation", "autre") and not _contient_marqueur_itineraire(p_norm):
+        depart_secours, destination_secours = detecter_deux_lieux_juxtaposes(phrase, arrets)
+        if depart_secours and destination_secours:
+            memoire["dernier_depart_resolu"] = depart_secours
+            memoire["dernier_destination_resolue"] = destination_secours
+            return _construire_reponse_itineraire(memoire, depart_secours, destination_secours, phrase, utilisateur, position)
 
     if intention == "itineraire" and (not depart_brut or not destination_brut) and _contient_marqueur_itineraire(p_norm):
         resultat_regles = analyser(phrase, arrets)
